@@ -52,7 +52,7 @@ export default function ChartComponent({
   const candlestickSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
   const volumeSeriesRef = useRef<ISeriesApi<'Histogram'> | null>(null);
   const indicatorSeriesRef = useRef<Map<string, ISeriesApi<any>>>(new Map());
-  const separatePaneCharts = useRef<Map<string, { chart: IChartApi; container: HTMLDivElement }>>(new Map());
+  const separatePaneCharts = useRef<Map<string, { chart: IChartApi; container: HTMLDivElement; series: ISeriesApi<any> }>>(new Map());
   const priceLineRefs = useRef<Map<string, IPriceLine>>(new Map());
   const seriesMarkersRef = useRef<any>(null);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
@@ -594,9 +594,10 @@ export default function ChartComponent({
       if (!data || data.length === 0) return;
 
       const seriesType = definition.renderConfig.seriesType;
+      let series: ISeriesApi<any>;
 
       if (seriesType === 'line') {
-        const series = chart.addSeries(LineSeries, {
+        series = chart.addSeries(LineSeries, {
           color: indicator.settings.color || '#8b5cf6',
           lineWidth: indicator.settings.lineWidth || 2,
           title: indicator.name,
@@ -604,12 +605,14 @@ export default function ChartComponent({
         const lineData = data.map(d => ({ time: d.time as Time, value: d.value }));
         series.setData(lineData as LineData[]);
       } else if (seriesType === 'histogram') {
-        const series = chart.addSeries(HistogramSeries, {
+        series = chart.addSeries(HistogramSeries, {
           color: indicator.settings.color || '#8b5cf6',
           title: indicator.name,
         });
         const histData = data.map(d => ({ time: d.time as Time, value: d.value }));
         series.setData(histData as HistogramData[]);
+      } else {
+        return;
       }
 
       if (chartRef.current) {
@@ -620,7 +623,7 @@ export default function ChartComponent({
         });
       }
 
-      separatePaneCharts.current.set(indicator.id, { chart, container: container as HTMLDivElement });
+      separatePaneCharts.current.set(indicator.id, { chart, container: container as HTMLDivElement, series });
     });
 
     return () => {
@@ -679,13 +682,10 @@ export default function ChartComponent({
       if (!data || data.length === 0) return;
 
       const chartData = separatePaneCharts.current.get(indicator.id);
-      if (!chartData) return;
+      if (!chartData || !chartData.series) return;
 
-      const series = Array.from((chartData.chart as any).series() || [])[0];
-      if (series) {
-        const formattedData = data.map(d => ({ time: d.time as Time, value: d.value }));
-        series.setData(formattedData as any);
-      }
+      const formattedData = data.map(d => ({ time: d.time as Time, value: d.value }));
+      chartData.series.setData(formattedData as any);
     });
   }, [bars, indicators, separatePaneIndicators]);
 
