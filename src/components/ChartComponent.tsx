@@ -78,11 +78,6 @@ export default function ChartComponent({
       layout: {
         background: { type: 'solid', color: '#0f172a' },
         textColor: '#94a3b8',
-        panes: {
-          separatorColor: '#334155',
-          separatorHoverColor: '#475569',
-          enableResize: true,
-        },
       },
       grid: {
         vertLines: { color: '#1e293b' },
