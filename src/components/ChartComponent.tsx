@@ -20,6 +20,7 @@ import { IndicatorInstance } from '../indicators/core/types';
 import { indicatorRegistry } from '../indicators/core/registry';
 import { indicatorCalculator } from '../indicators/core/calculator';
 import { BandsPrimitive } from '../indicators/primitives/BandsPrimitive';
+import { ResizableIndicatorPane } from './ResizableIndicatorPane';
 
 interface ChartComponentProps {
   bars: OHLCVBar[];
@@ -58,6 +59,7 @@ export default function ChartComponent({
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; price: number } | null>(null);
   const [linePositions, setLinePositions] = useState<Map<string, number>>(new Map());
   const [separatePaneIndicators, setSeparatePaneIndicators] = useState<IndicatorInstance[]>([]);
+  const [paneHeights, setPaneHeights] = useState<Map<string, number>>(new Map());
   const [selectedBar, setSelectedBar] = useState<OHLCVBar | null>(null);
   const selectedBarRef = useRef<OHLCVBar | null>(null);
   const [spotlightPosition, setSpotlightPosition] = useState<{ x: number; width: number } | null>(null);
@@ -76,6 +78,11 @@ export default function ChartComponent({
       layout: {
         background: { type: 'solid', color: '#0f172a' },
         textColor: '#94a3b8',
+        panes: {
+          separatorColor: '#334155',
+          separatorHoverColor: '#475569',
+          enableResize: true,
+        },
       },
       grid: {
         vertLines: { color: '#1e293b' },
@@ -587,7 +594,7 @@ export default function ChartComponent({
       const seriesType = definition.renderConfig.seriesType;
 
       if (seriesType === 'line') {
-        const series = chart.addLineSeries({
+        const series = chart.addSeries(LineSeries, {
           color: indicator.settings.color || '#8b5cf6',
           lineWidth: indicator.settings.lineWidth || 2,
           title: indicator.name,
@@ -595,7 +602,7 @@ export default function ChartComponent({
         const lineData = data.map(d => ({ time: d.time as Time, value: d.value }));
         series.setData(lineData as LineData[]);
       } else if (seriesType === 'histogram') {
-        const series = chart.addHistogramSeries({
+        const series = chart.addSeries(HistogramSeries, {
           color: indicator.settings.color || '#8b5cf6',
           title: indicator.name,
         });
@@ -621,6 +628,18 @@ export default function ChartComponent({
       separatePaneCharts.current.clear();
     };
   }, [separatePaneIndicators, bars]);
+
+  // Resize charts when pane heights change
+  useEffect(() => {
+    paneHeights.forEach((height, indicatorId) => {
+      const chartData = separatePaneCharts.current.get(indicatorId);
+      if (chartData) {
+        chartData.chart.applyOptions({
+          height: height,
+        });
+      }
+    });
+  }, [paneHeights]);
 
   useEffect(() => {
     console.log('Marker effect running, selectedBar:', selectedBar);
@@ -724,7 +743,7 @@ export default function ChartComponent({
 
       {separatePaneIndicators.map((indicator) => (
         <div key={indicator.id} className="w-full">
-          <div className="text-xs text-slate-400 px-2 py-1">{indicator.name}</div>
+          <div className="text-xs text-slate-400 px-2 py-1 bg-slate-800/50">{indicator.name}</div>
           <div id={`indicator-pane-${indicator.id}`} className="w-full" style={{ height: '200px' }} />
         </div>
       ))}
