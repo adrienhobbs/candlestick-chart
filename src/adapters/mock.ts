@@ -11,6 +11,9 @@ export class MockAdapter implements BarDataAdapter {
 
   async fetchHistoricalBars(params: HistoricalDataParams): Promise<OHLCVBar[]> {
     const { limit = 100, before } = params;
+
+    await new Promise(resolve => setTimeout(resolve, 800));
+
     const bars: OHLCVBar[] = [];
     const now = before || Date.now();
     let price = 100;
