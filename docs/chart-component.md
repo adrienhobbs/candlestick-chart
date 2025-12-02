@@ -1,0 +1,1387 @@
+# ChartComponent Usage Guide
+
+A comprehensive guide to using the ChartComponent in your trading application.
+
+## Table of Contents
+
+- [Introduction](#introduction)
+- [Installation](#installation)
+- [Basic Usage](#basic-usage)
+- [Data Format](#data-format)
+- [Props Reference](#props-reference)
+- [Features](#features)
+- [Event Callbacks](#event-callbacks)
+- [Chart Interactions](#chart-interactions)
+- [Styling](#styling)
+- [Data Management](#data-management)
+- [Integration Examples](#integration-examples)
+- [Persistence Options](#persistence-options)
+- [Performance](#performance)
+- [Troubleshooting](#troubleshooting)
+- [TypeScript Types](#typescript-types)
+
+## Introduction
+
+ChartComponent is a pure presentation component for displaying candlestick charts with volume, technical indicators, and price lines. It's built on [TradingView's Lightweight Charts](https://tradingview.github.io/lightweight-charts/) library and provides a rich, interactive trading chart experience.
+
+### Key Features
+
+- **Candlestick Charts**: Display OHLCV data with automatic color coding
+- **Volume Display**: Integrated volume histogram below the price chart
+- **Technical Indicators**: Support for overlay and separate pane indicators
+- **Price Lines**: Draw entry, stop loss, and take profit lines
+- **Bar Selection**: Click to select and inspect individual bars
+- **Infinite Scroll**: Load historical data as users scroll back in time
+- **Context Menu**: Right-click to add price lines at specific levels
+- **Provider Agnostic**: Works with any data source and persistence layer
+
+### When to Use
+
+Use ChartComponent when you need to:
+- Display candlestick price data
+- Visualize technical indicators
+- Allow users to interact with chart data
+- Build trading interfaces with entry/exit levels
+- Integrate charting into your trading application
+
+## Installation
+
+Import the component and required types:
+
+```typescript
+import ChartComponent from './components/ChartComponent';
+import { OHLCVBar, ChartLine } from './types/chart';
+import { IndicatorInstance } from './indicators/core/types';
+```
+
+## Basic Usage
+
+### Minimal Example
+
+The simplest use case requires only the `bars` prop:
+
+```typescript
+import { useState } from 'react';
+import ChartComponent from './components/ChartComponent';
+import { OHLCVBar } from './types/chart';
+
+function MyChart() {
+  const [bars, setBars] = useState<OHLCVBar[]>([
+    {
+      timestamp: 1700000000000,
+      open: 100.5,
+      high: 101.2,
+      low: 100.0,
+      close: 100.8,
+      volume: 1000000,
+    },
+    // ... more bars
+  ]);
+
+  return <ChartComponent bars={bars} />;
+}
+```
+
+### Complete Example
+
+A full-featured implementation with all capabilities:
+
+```typescript
+import { useState } from 'react';
+import ChartComponent from './components/ChartComponent';
+import { useChartAPI } from './hooks/useChartAPI';
+import { OHLCVBar } from './types/chart';
+
+function TradingChart() {
+  const [bars, setBars] = useState<OHLCVBar[]>([]);
+  const [selectedBar, setSelectedBar] = useState<OHLCVBar | null>(null);
+
+  const {
+    lines,
+    indicators,
+    addLineByType,
+    removeLine,
+    addIndicator,
+    removeIndicator,
+  } = useChartAPI();
+
+  const handleLoadMore = async (oldestTimestamp: number) => {
+    // Fetch older data from your API
+    const olderBars = await fetchHistoricalData(oldestTimestamp);
+    setBars(prev => [...olderBars, ...prev]);
+  };
+
+  const handleBarClick = (bar: OHLCVBar | null) => {
+    setSelectedBar(bar);
+    console.log('Selected bar:', bar);
+  };
+
+  return (
+    <ChartComponent
+      bars={bars}
+      indicators={indicators}
+      lines={lines}
+      onLoadMoreData={handleLoadMore}
+      onBarClick={handleBarClick}
+      onAddLine={addLineByType}
+      onDeleteLine={removeLine}
+      enableBarSelection={true}
+    />
+  );
+}
+```
+
+## Data Format
+
+### OHLCVBar Interface
+
+ChartComponent expects data in the following format:
+
+```typescript
+interface OHLCVBar {
+  timestamp: number;      // Unix timestamp in milliseconds
+  open: number;          // Opening price
+  high: number;          // Highest price
+  low: number;           // Lowest price
+  close: number;         // Closing price
+  volume: number;        // Trading volume
+  trade_count?: number;  // Optional: number of trades
+  vwap?: number;        // Optional: volume-weighted average price
+}
+```
+
+### Timestamp Format
+
+**Important**: Timestamps must be in **milliseconds** (not seconds).
+
+```typescript
+// ✅ Correct: Milliseconds
+{ timestamp: 1700000000000 }
+
+// ❌ Wrong: Seconds
+{ timestamp: 1700000000 }
+```
+
+If your data source provides Unix timestamps in seconds, convert them:
+
+```typescript
+const bars = apiData.map(bar => ({
+  ...bar,
+  timestamp: bar.timestamp * 1000, // Convert seconds to milliseconds
+}));
+```
+
+### Example Bar Data
+
+```typescript
+const bars: OHLCVBar[] = [
+  {
+    timestamp: 1700000000000,  // Nov 14, 2023 22:13:20 GMT
+    open: 15.95,
+    high: 15.95,
+    low: 15.91,
+    close: 15.91,
+    volume: 400,
+    trade_count: 4,
+    vwap: 15.9275,
+  },
+  {
+    timestamp: 1700000300000,  // 5 minutes later
+    open: 15.86,
+    high: 15.86,
+    low: 15.86,
+    close: 15.86,
+    volume: 100,
+    trade_count: 1,
+    vwap: 15.86,
+  },
+];
+```
+
+### Data Requirements
+
+- Bars should be **sorted by timestamp** (ascending order)
+- No duplicate timestamps (component handles deduplication)
+- All required fields must be present
+- Prices should be positive numbers
+- Volume should be non-negative
+
+## Props Reference
+
+### Required Props
+
+| Prop | Type | Description |
+|------|------|-------------|
+| `bars` | `OHLCVBar[]` | Array of candlestick data to display |
+
+### Optional Props
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `onLoadMoreData` | `(oldestTimestamp: number) => void` | - | Callback when user scrolls to load older data |
+| `indicators` | `IndicatorInstance[]` | `[]` | Array of indicator instances to display |
+| `lines` | `ChartLine[]` | `[]` | Array of price lines to draw |
+| `onBarUpdate` | `(bar: OHLCVBar) => void` | - | Callback when current bar updates |
+| `onNewBar` | `(bar: OHLCVBar) => void` | - | Callback when new bar is created |
+| `onDeleteLine` | `(lineId: string) => void` | - | Callback when line delete button is clicked |
+| `onAddLine` | `(type, price) => void` | - | Callback when line is added from context menu |
+| `enableBarSelection` | `boolean` | `true` | Enable/disable bar selection feature |
+| `onBarClick` | `(bar: OHLCVBar \| null) => void` | - | Callback when bar is clicked or deselected |
+
+## Features
+
+### Infinite Scroll (Load More Data)
+
+The infinite scroll feature automatically triggers when users pan back to view older data.
+
+#### How It Works
+
+1. User scrolls/pans to the left edge of the chart
+2. When within 5 bars of the start, `onLoadMoreData` is called
+3. Component shows "Loading more data..." indicator
+4. Your callback fetches and prepends older bars
+5. Chart updates with new data
+
+#### Implementation
+
+```typescript
+const handleLoadMore = async (oldestTimestamp: number) => {
+  try {
+    // Fetch data older than the provided timestamp
+    const response = await fetch(
+      `/api/bars?before=${oldestTimestamp}&limit=100`
+    );
+    const olderBars = await response.json();
+
+    // Prepend to existing bars
+    setBars(prev => [...olderBars, ...prev]);
+  } catch (error) {
+    console.error('Failed to load historical data:', error);
+  }
+};
+
+<ChartComponent
+  bars={bars}
+  onLoadMoreData={handleLoadMore}
+/>
+```
+
+#### Best Practices
+
+- Fetch 50-200 bars per request (balance between performance and UX)
+- Show loading state in your UI
+- Handle errors gracefully
+- Prevent duplicate requests with a loading flag
+- Cache fetched data to avoid redundant API calls
+
+### Bar Selection
+
+Click any bar to select it and view detailed information.
+
+#### Features
+
+- Visual spotlight overlay on selected bar
+- Marker above the selected bar
+- Deselect by clicking the same bar again
+- Callback provides full bar data
+
+#### Implementation
+
+```typescript
+const [selectedBar, setSelectedBar] = useState<OHLCVBar | null>(null);
+
+const handleBarClick = (bar: OHLCVBar | null) => {
+  setSelectedBar(bar);
+
+  if (bar) {
+    console.log('Bar selected:', {
+      time: new Date(bar.timestamp).toLocaleString(),
+      open: bar.open,
+      high: bar.high,
+      low: bar.low,
+      close: bar.close,
+      volume: bar.volume,
+    });
+  } else {
+    console.log('Bar deselected');
+  }
+};
+
+<ChartComponent
+  bars={bars}
+  enableBarSelection={true}
+  onBarClick={handleBarClick}
+/>
+```
+
+#### Disabling Selection
+
+```typescript
+<ChartComponent
+  bars={bars}
+  enableBarSelection={false}
+/>
+```
+
+### Price Lines
+
+Draw horizontal lines on the chart for entry points, stop losses, and take profit levels.
+
+#### ChartLine Interface
+
+```typescript
+interface ChartLine {
+  id: string;
+  price: number;
+  color: string;
+  lineWidth?: number;
+  lineStyle?: 'solid' | 'dashed' | 'dotted';
+  title?: string;
+  type?: 'entry' | 'stopLoss' | 'takeProfit';
+}
+```
+
+#### Adding Lines Programmatically
+
+```typescript
+const [lines, setLines] = useState<ChartLine[]>([]);
+
+const addEntryLine = (price: number) => {
+  const newLine: ChartLine = {
+    id: `entry-${Date.now()}`,
+    price: price,
+    color: '#3b82f6',
+    lineWidth: 2,
+    lineStyle: 'solid',
+    title: 'Entry',
+  };
+  setLines(prev => [...prev, newLine]);
+};
+
+const addStopLoss = (price: number) => {
+  const newLine: ChartLine = {
+    id: `sl-${Date.now()}`,
+    price: price,
+    color: '#ef4444',
+    lineWidth: 2,
+    lineStyle: 'dashed',
+    title: 'Stop Loss',
+  };
+  setLines(prev => [...prev, newLine]);
+};
+
+<ChartComponent
+  bars={bars}
+  lines={lines}
+  onDeleteLine={(id) => setLines(prev => prev.filter(l => l.id !== id))}
+/>
+```
+
+#### Interactive Delete
+
+Each line has a delete button (red × icon) positioned on the right side of the chart. Click to remove the line.
+
+### Context Menu
+
+Right-click on the chart to open a context menu for adding price lines.
+
+#### Features
+
+- Shows the exact price at cursor position
+- Add Entry Line
+- Add Stop Loss
+- Add Take Profit
+
+#### Implementation
+
+```typescript
+const handleAddLine = (
+  type: 'entry' | 'stopLoss' | 'takeProfit',
+  price: number
+) => {
+  console.log(`Adding ${type} line at ${price}`);
+
+  const colors = {
+    entry: '#3b82f6',
+    stopLoss: '#ef4444',
+    takeProfit: '#10b981',
+  };
+
+  const newLine: ChartLine = {
+    id: `${type}-${Date.now()}`,
+    price,
+    color: colors[type],
+    title: type.replace(/([A-Z])/g, ' $1').trim(),
+  };
+
+  setLines(prev => [...prev, newLine]);
+};
+
+<ChartComponent
+  bars={bars}
+  lines={lines}
+  onAddLine={handleAddLine}
+/>
+```
+
+### Indicators
+
+Display technical indicators on the chart. Indicators can be overlaid on the price chart or shown in separate panes below.
+
+#### Adding Indicators
+
+```typescript
+import { useChartAPI } from './hooks/useChartAPI';
+
+function MyChart() {
+  const { indicators, addIndicator, removeIndicator } = useChartAPI();
+
+  return (
+    <>
+      <button onClick={() => addIndicator('sma')}>Add SMA</button>
+      <button onClick={() => addIndicator('rsi')}>Add RSI</button>
+
+      <ChartComponent
+        bars={bars}
+        indicators={indicators}
+      />
+    </>
+  );
+}
+```
+
+#### Overlay vs Separate Pane
+
+- **Overlay Indicators**: SMA, EMA, Bollinger Bands, VWAP (shown on main chart)
+- **Separate Pane**: RSI, MACD, Stochastic (shown below main chart)
+
+See [Creating Indicators](./creating-indicators.md) for details on building custom indicators.
+
+### Volume Display
+
+Volume is automatically displayed as a histogram at the bottom of the main chart.
+
+#### Color Coding
+
+- **Green**: Volume for up bars (close > open)
+- **Red**: Volume for down bars (close < open)
+- **Semi-transparent**: 50% opacity for better visibility
+
+The volume scale is configured to use 20% of the chart height (top 80% for price, bottom 20% for volume).
+
+## Event Callbacks
+
+### Data Loading
+
+#### onLoadMoreData
+
+Triggered when user scrolls to view older data.
+
+```typescript
+onLoadMoreData?: (oldestTimestamp: number) => void
+```
+
+**Parameters:**
+- `oldestTimestamp`: Unix timestamp (ms) of the oldest bar currently displayed
+
+**Example:**
+```typescript
+const handleLoadMore = async (oldestTimestamp: number) => {
+  const olderBars = await api.fetchBarsOlderThan(oldestTimestamp);
+  setBars(prev => [...olderBars, ...prev]);
+};
+```
+
+### Bar Interaction
+
+#### onBarClick
+
+Triggered when user clicks a bar or deselects the current selection.
+
+```typescript
+onBarClick?: (bar: OHLCVBar | null) => void
+```
+
+**Parameters:**
+- `bar`: The selected bar, or `null` if deselecting
+
+**Example:**
+```typescript
+const handleBarClick = (bar: OHLCVBar | null) => {
+  if (bar) {
+    setSelectedBar(bar);
+    showBarDetails(bar);
+  } else {
+    setSelectedBar(null);
+    hideBarDetails();
+  }
+};
+```
+
+#### onBarUpdate
+
+Triggered when the current (most recent) bar is updated.
+
+```typescript
+onBarUpdate?: (updatedBar: OHLCVBar) => void
+```
+
+**Use Case**: Real-time price updates within the current time period.
+
+#### onNewBar
+
+Triggered when a new bar is added to the chart.
+
+```typescript
+onNewBar?: (newBar: OHLCVBar) => void
+```
+
+**Use Case**: When time period closes and new bar begins.
+
+### Line Management
+
+#### onDeleteLine
+
+Triggered when user clicks the delete button on a price line.
+
+```typescript
+onDeleteLine?: (lineId: string) => void
+```
+
+**Example:**
+```typescript
+const handleDeleteLine = (lineId: string) => {
+  setLines(prev => prev.filter(line => line.id !== lineId));
+};
+```
+
+#### onAddLine
+
+Triggered when user adds a line from the context menu.
+
+```typescript
+onAddLine?: (type: 'entry' | 'stopLoss' | 'takeProfit', price: number) => void
+```
+
+**Example:**
+```typescript
+const handleAddLine = (type, price) => {
+  const newLine = createLine(type, price);
+  setLines(prev => [...prev, newLine]);
+};
+```
+
+## Chart Interactions
+
+### Mouse Controls
+
+| Action | Result |
+|--------|--------|
+| **Click** | Select bar |
+| **Click selected bar** | Deselect |
+| **Drag** | Pan chart horizontally |
+| **Scroll wheel** | Zoom in/out |
+| **Right-click** | Open context menu |
+| **Click delete button** | Remove price line |
+
+### Touch Controls
+
+| Action | Result |
+|--------|--------|
+| **Tap** | Select bar |
+| **Drag** | Pan chart |
+| **Pinch** | Zoom in/out |
+
+### Drag vs Click Detection
+
+The component distinguishes between clicks and drags:
+- Movement < 5px = Click (selects bar)
+- Movement ≥ 5px = Drag (pans chart)
+
+## Styling
+
+### Theme
+
+ChartComponent uses a dark theme by default:
+
+- Background: `#0f172a` (slate-900)
+- Text: `#94a3b8` (slate-400)
+- Grid lines: `#1e293b` (slate-800)
+- Borders: `#334155` (slate-700)
+
+### Candlestick Colors
+
+- Up candles: `#10b981` (green)
+- Down candles: `#ef4444` (red)
+
+### Spotlight Overlay
+
+Selected bar is highlighted with:
+- Background: `rgba(59, 130, 246, 0.15)` (blue, 15% opacity)
+- Border: `rgba(59, 130, 246, 0.4)` (blue, 40% opacity)
+
+### Customizing Appearance
+
+To customize the chart appearance, you can:
+
+1. **Modify the component directly**: Edit color values in `ChartComponent.tsx`
+2. **Create a themed wrapper**: Wrap ChartComponent with your own styling logic
+3. **Use CSS classes**: Add custom classes to indicator settings
+
+## Data Management
+
+ChartComponent is a pure presentation component that doesn't manage data internally. You're responsible for fetching, storing, and updating the `bars` prop. This section covers patterns and tools to make data management easier.
+
+### Understanding the Data Flow
+
+```
+Data Source → Your State Management → ChartComponent
+(API/WS)         (useBarsData)           (Display)
+```
+
+ChartComponent only cares about the `bars` array you pass it. The rest is up to you.
+
+### The useBarsData Hook
+
+We provide a `useBarsData` hook that handles common data management tasks:
+
+```typescript
+import { useBarsData } from './hooks/useBarsData';
+import { AlpacaBarAdapter } from './adapters/alpaca';
+
+const adapter = new AlpacaBarAdapter({
+  apiKey: import.meta.env.VITE_ALPACA_API_KEY,
+  secretKey: import.meta.env.VITE_ALPACA_SECRET_KEY,
+});
+
+const {
+  bars,              // Current bars array
+  loading,           // Loading state
+  error,             // Error state
+  connected,         // WebSocket connection status
+  setBars,           // Replace all bars
+  appendBar,         // Add bar to end
+  updateLastBar,     // Update current bar
+  updateCurrentBar,  // Update with trade data
+  prependBars,       // Add bars to beginning
+  fetchHistorical,   // Fetch historical data
+  subscribe,         // Subscribe to real-time updates
+  unsubscribe,       // Unsubscribe from updates
+} = useBarsData({
+  adapter,
+  symbol: 'AAPL',
+  timeframe: '5Min',
+  autoFetch: true,
+  autoSubscribe: true,
+  limit: 500,
+});
+```
+
+### Data Management Recipes
+
+#### Recipe 1: REST API Only (No Real-Time)
+
+Perfect for historical analysis or when you don't need live updates:
+
+```typescript
+import { useState } from 'react';
+import ChartComponent from './components/ChartComponent';
+import { OHLCVBar } from './types/chart';
+
+function HistoricalChart() {
+  const [bars, setBars] = useState<OHLCVBar[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  const fetchBars = async () => {
+    setLoading(true);
+    try {
+      const response = await fetch('/api/bars?symbol=AAPL&limit=500');
+      const data = await response.json();
+      setBars(data);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadMoreBars = async (oldestTimestamp: number) => {
+    const response = await fetch(
+      `/api/bars?symbol=AAPL&before=${oldestTimestamp}&limit=100`
+    );
+    const olderBars = await response.json();
+    setBars(prev => [...olderBars, ...prev]);
+  };
+
+  return (
+    <ChartComponent
+      bars={bars}
+      onLoadMoreData={loadMoreBars}
+    />
+  );
+}
+```
+
+#### Recipe 2: WebSocket Only (Real-Time Stream)
+
+For live trading data with no historical context:
+
+```typescript
+import { useState, useEffect } from 'react';
+import ChartComponent from './components/ChartComponent';
+import { OHLCVBar } from './types/chart';
+
+function LiveChart() {
+  const [bars, setBars] = useState<OHLCVBar[]>([]);
+
+  useEffect(() => {
+    const ws = new WebSocket('wss://api.example.com/bars');
+
+    ws.onmessage = (event) => {
+      const bar: OHLCVBar = JSON.parse(event.data);
+      setBars(prev => [...prev, bar]);
+    };
+
+    return () => ws.close();
+  }, []);
+
+  return <ChartComponent bars={bars} />;
+}
+```
+
+#### Recipe 3: REST + WebSocket (Best of Both)
+
+Load historical data, then stream real-time updates:
+
+```typescript
+import { useState, useEffect } from 'react';
+import ChartComponent from './components/ChartComponent';
+import { OHLCVBar } from './types/chart';
+import { updateCurrentBar } from './utils/barUtils';
+
+function HybridChart() {
+  const [bars, setBars] = useState<OHLCVBar[]>([]);
+
+  useEffect(() => {
+    fetchHistorical();
+    subscribeRealtime();
+  }, []);
+
+  const fetchHistorical = async () => {
+    const response = await fetch('/api/bars?limit=500');
+    const data = await response.json();
+    setBars(data);
+  };
+
+  const subscribeRealtime = () => {
+    const ws = new WebSocket('wss://api.example.com/trades');
+
+    ws.onmessage = (event) => {
+      const trade = JSON.parse(event.data);
+      setBars(prev => updateCurrentBar(prev, trade.price, trade.size));
+    };
+
+    return () => ws.close();
+  };
+
+  return <ChartComponent bars={bars} />;
+}
+```
+
+#### Recipe 4: Polling Strategy
+
+When WebSocket isn't available, poll the API:
+
+```typescript
+import { useState, useEffect } from 'react';
+import ChartComponent from './components/ChartComponent';
+import { OHLCVBar } from './types/chart';
+
+function PollingChart() {
+  const [bars, setBars] = useState<OHLCVBar[]>([]);
+
+  useEffect(() => {
+    const fetchLatest = async () => {
+      const response = await fetch('/api/bars/latest');
+      const newBars = await response.json();
+      setBars(prev => [...prev, ...newBars]);
+    };
+
+    const interval = setInterval(fetchLatest, 5000);
+    fetchLatest();
+
+    return () => clearInterval(interval);
+  }, []);
+
+  return <ChartComponent bars={bars} />;
+}
+```
+
+#### Recipe 5: Using useBarsData with Alpaca
+
+Complete example with real market data:
+
+```typescript
+import { useBarsData } from './hooks/useBarsData';
+import { AlpacaBarAdapter } from './adapters/alpaca';
+import ChartComponent from './components/ChartComponent';
+
+function AlpacaChart() {
+  const adapter = new AlpacaBarAdapter({
+    apiKey: import.meta.env.VITE_ALPACA_API_KEY,
+    secretKey: import.meta.env.VITE_ALPACA_SECRET_KEY,
+  });
+
+  const {
+    bars,
+    loading,
+    error,
+    connected,
+    fetchHistorical,
+  } = useBarsData({
+    adapter,
+    symbol: 'AAPL',
+    timeframe: '5Min',
+    autoFetch: true,
+    autoSubscribe: true,
+  });
+
+  const handleLoadMore = async (oldestTimestamp: number) => {
+    await fetchHistorical({
+      before: oldestTimestamp,
+      limit: 100,
+    });
+  };
+
+  if (loading) return <div>Loading...</div>;
+  if (error) return <div>Error: {error.message}</div>;
+
+  return (
+    <div>
+      <div className="status">
+        {connected ? '🟢 Connected' : '🔴 Disconnected'}
+      </div>
+      <ChartComponent
+        bars={bars}
+        onLoadMoreData={handleLoadMore}
+      />
+    </div>
+  );
+}
+```
+
+### Data Utilities
+
+We provide utility functions for common bar operations:
+
+```typescript
+import {
+  validateBar,
+  normalizeTimestamp,
+  sortBars,
+  deduplicateBars,
+  mergeBars,
+  updateCurrentBar,
+  appendBar,
+  prependBars,
+} from './utils/barUtils';
+
+const newBars = validateAndNormalizeBars(rawData);
+
+const sorted = sortBars(bars);
+
+const unique = deduplicateBars(bars);
+
+const combined = mergeBars(existingBars, newBars);
+
+const updated = updateCurrentBar(bars, tradePrice, tradeVolume);
+```
+
+### Creating Custom Adapters
+
+You can create adapters for any data provider:
+
+```typescript
+import { BarDataAdapter, HistoricalDataParams, RealtimeHandlers } from './adapters/types';
+
+class MyCustomAdapter implements BarDataAdapter {
+  async fetchHistoricalBars(params: HistoricalDataParams) {
+    const response = await fetch(`/api/bars?symbol=${params.symbol}`);
+    const data = await response.json();
+
+    return data.map(bar => ({
+      timestamp: bar.time * 1000,
+      open: bar.o,
+      high: bar.h,
+      low: bar.l,
+      close: bar.c,
+      volume: bar.v,
+    }));
+  }
+
+  subscribeRealtime(symbol: string, handlers: RealtimeHandlers) {
+    const ws = new WebSocket(`wss://my-api.com/${symbol}`);
+
+    ws.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      handlers.onBar?.(data);
+    };
+
+    ws.onerror = () => handlers.onError?.(new Error('WebSocket error'));
+
+    return {
+      unsubscribe: () => ws.close(),
+    };
+  }
+}
+```
+
+### Best Practices
+
+1. **Always validate data**: Use `validateBar()` before adding to state
+2. **Handle duplicates**: Use `deduplicateBars()` to prevent duplicate timestamps
+3. **Sort chronologically**: Always keep bars sorted by timestamp
+4. **Normalize timestamps**: Convert seconds to milliseconds with `normalizeTimestamp()`
+5. **Error handling**: Always catch and display errors to users
+6. **Loading states**: Show loading indicators during data fetches
+7. **Cleanup**: Unsubscribe from WebSockets on component unmount
+8. **Throttle updates**: Don't update more than once per second for performance
+
+## Integration Examples
+
+### With REST API
+
+```typescript
+import { useState, useEffect } from 'react';
+import ChartComponent from './components/ChartComponent';
+
+function RESTChart() {
+  const [bars, setBars] = useState<OHLCVBar[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetchInitialData();
+  }, []);
+
+  const fetchInitialData = async () => {
+    try {
+      const response = await fetch('/api/bars?limit=500');
+      const data = await response.json();
+      setBars(data);
+    } catch (error) {
+      console.error('Failed to fetch data:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleLoadMore = async (oldestTimestamp: number) => {
+    const response = await fetch(
+      `/api/bars?before=${oldestTimestamp}&limit=100`
+    );
+    const olderBars = await response.json();
+    setBars(prev => [...olderBars, ...prev]);
+  };
+
+  if (loading) return <div>Loading...</div>;
+
+  return (
+    <ChartComponent
+      bars={bars}
+      onLoadMoreData={handleLoadMore}
+    />
+  );
+}
+```
+
+### With WebSocket
+
+```typescript
+import { useState, useEffect, useRef } from 'react';
+import ChartComponent from './components/ChartComponent';
+
+function WebSocketChart() {
+  const [bars, setBars] = useState<OHLCVBar[]>([]);
+  const wsRef = useRef<WebSocket | null>(null);
+
+  useEffect(() => {
+    // Connect to WebSocket
+    wsRef.current = new WebSocket('wss://api.example.com/trades');
+
+    wsRef.current.onmessage = (event) => {
+      const trade = JSON.parse(event.data);
+      updateCurrentBar(trade);
+    };
+
+    // Load initial data
+    fetchInitialData();
+
+    return () => {
+      wsRef.current?.close();
+    };
+  }, []);
+
+  const updateCurrentBar = (trade: any) => {
+    setBars(prev => {
+      if (prev.length === 0) return prev;
+
+      const updated = [...prev];
+      const currentBar = { ...updated[updated.length - 1] };
+
+      // Update current bar with new trade
+      currentBar.close = trade.price;
+      currentBar.high = Math.max(currentBar.high, trade.price);
+      currentBar.low = Math.min(currentBar.low, trade.price);
+      currentBar.volume += trade.size;
+
+      updated[updated.length - 1] = currentBar;
+      return updated;
+    });
+  };
+
+  return <ChartComponent bars={bars} />;
+}
+```
+
+### With Database Query
+
+```typescript
+import { useState, useEffect } from 'react';
+import { supabase } from './lib/supabase';
+import ChartComponent from './components/ChartComponent';
+
+function DatabaseChart() {
+  const [bars, setBars] = useState<OHLCVBar[]>([]);
+
+  useEffect(() => {
+    loadBars();
+  }, []);
+
+  const loadBars = async () => {
+    const { data } = await supabase
+      .from('ohlcv_bars')
+      .select('*')
+      .order('timestamp', { ascending: true })
+      .limit(500);
+
+    if (data) {
+      setBars(data);
+    }
+  };
+
+  const handleLoadMore = async (oldestTimestamp: number) => {
+    const { data } = await supabase
+      .from('ohlcv_bars')
+      .select('*')
+      .lt('timestamp', oldestTimestamp)
+      .order('timestamp', { ascending: false })
+      .limit(100);
+
+    if (data) {
+      setBars(prev => [...data.reverse(), ...prev]);
+    }
+  };
+
+  return (
+    <ChartComponent
+      bars={bars}
+      onLoadMoreData={handleLoadMore}
+    />
+  );
+}
+```
+
+### With useChartAPI Hook
+
+The `useChartAPI` hook provides state management for lines and indicators with optional persistence.
+
+```typescript
+import { useState } from 'react';
+import ChartComponent from './components/ChartComponent';
+import { useChartAPI } from './hooks/useChartAPI';
+
+function ManagedChart() {
+  const [bars, setBars] = useState<OHLCVBar[]>([]);
+
+  const {
+    lines,
+    indicators,
+    addLineByType,
+    removeLine,
+    addIndicator,
+    removeIndicator,
+    updateIndicatorSettings,
+  } = useChartAPI();
+
+  return (
+    <div>
+      <div className="controls">
+        <button onClick={() => addIndicator('sma')}>Add SMA</button>
+        <button onClick={() => addIndicator('rsi')}>Add RSI</button>
+        <button onClick={() => addLineByType('entry', 100)}>
+          Add Entry @ 100
+        </button>
+      </div>
+
+      <ChartComponent
+        bars={bars}
+        indicators={indicators}
+        lines={lines}
+        onAddLine={addLineByType}
+        onDeleteLine={removeLine}
+      />
+    </div>
+  );
+}
+```
+
+## Persistence Options
+
+The indicator system supports multiple persistence strategies. ChartComponent itself is stateless, but you can persist indicator configurations using the `useChartAPI` hook with a persistence adapter.
+
+### No Persistence (Default)
+
+State is kept in memory only and lost on page refresh:
+
+```typescript
+const { indicators, addIndicator } = useChartAPI();
+```
+
+### localStorage
+
+Persist to browser's localStorage:
+
+```typescript
+import { createPersistenceAdapter } from './indicators/core/persistence';
+
+const persistenceAdapter = createPersistenceAdapter('localStorage');
+
+const { indicators, addIndicator } = useChartAPI({ persistenceAdapter });
+```
+
+### Supabase
+
+Persist to Supabase database:
+
+```typescript
+import { createPersistenceAdapter } from './indicators/core/persistence';
+
+const persistenceAdapter = createPersistenceAdapter('supabase', {
+  supabaseUrl: 'https://your-project.supabase.co',
+  supabaseKey: 'your-anon-key',
+});
+
+const { indicators, addIndicator } = useChartAPI({ persistenceAdapter });
+```
+
+### Custom Adapter
+
+Implement your own persistence strategy:
+
+```typescript
+import { PersistenceAdapter } from './indicators/core/persistence';
+
+const customAdapter: PersistenceAdapter = {
+  async saveIndicators(indicators) {
+    await myDatabase.save('indicators', indicators);
+  },
+
+  async loadIndicators() {
+    const data = await myDatabase.load('indicators');
+    return data || [];
+  },
+};
+
+const { indicators, addIndicator } = useChartAPI({
+  persistenceAdapter: customAdapter,
+});
+```
+
+## Performance
+
+### Data Handling
+
+ChartComponent is optimized for handling large datasets:
+
+- **Automatic deduplication**: Removes duplicate timestamps
+- **Efficient updates**: Uses `update()` for single bar changes vs `setData()` for full refresh
+- **Sorted data**: Maintains chronological order
+
+### Best Practices
+
+1. **Limit initial data**: Load 200-500 bars initially
+2. **Paginate historical data**: Load more as needed via infinite scroll
+3. **Throttle real-time updates**: Update at most once per second
+4. **Memoize expensive calculations**: Use `useMemo` for derived data
+5. **Avoid unnecessary re-renders**: Memoize callback functions with `useCallback`
+
+### Large Datasets
+
+For datasets > 10,000 bars:
+
+- Load data incrementally
+- Consider data sampling for very old data
+- Use server-side aggregation for different timeframes
+- Implement data virtualization if needed
+
+## Troubleshooting
+
+### Bars Not Displaying
+
+**Problem**: Chart is empty or bars don't appear
+
+**Solutions**:
+- Verify timestamps are in milliseconds (not seconds)
+- Check bars are sorted by timestamp (ascending)
+- Ensure all required fields are present (timestamp, open, high, low, close, volume)
+- Verify data types are numbers (not strings)
+- Check browser console for errors
+
+```typescript
+// ❌ Wrong
+bars: [{ timestamp: "1700000000", open: "100", ... }]
+
+// ✅ Correct
+bars: [{ timestamp: 1700000000000, open: 100, ... }]
+```
+
+### Timestamps in Wrong Format
+
+**Problem**: Chart shows wrong dates or timezone issues
+
+**Solution**: Always use Unix timestamps in milliseconds
+
+```typescript
+// Convert seconds to milliseconds
+const bars = apiData.map(bar => ({
+  ...bar,
+  timestamp: bar.timestamp * 1000,
+}));
+
+// Convert ISO string to timestamp
+const timestamp = new Date(isoString).getTime();
+```
+
+### Duplicate Bars
+
+**Problem**: Multiple bars at the same timestamp
+
+**Solution**: Component handles deduplication automatically, but you should prevent duplicates in your data source:
+
+```typescript
+const uniqueBars = bars.reduce((acc, bar) => {
+  if (!acc.find(b => b.timestamp === bar.timestamp)) {
+    acc.push(bar);
+  }
+  return acc;
+}, [] as OHLCVBar[]);
+```
+
+### Indicators Not Updating
+
+**Problem**: Indicators don't recalculate when data changes
+
+**Solutions**:
+- Ensure indicator calculator cache is invalidated
+- Verify indicator settings schema is valid
+- Check indicator definition is registered
+
+```typescript
+import { indicatorCalculator } from './indicators/core/calculator';
+
+// Manually invalidate cache
+indicatorCalculator.invalidateCache(indicatorId);
+```
+
+### Lines Not Appearing
+
+**Problem**: Price lines don't show on chart
+
+**Solutions**:
+- Verify line price is within visible range
+- Check line color isn't same as background
+- Ensure `lines` prop is passed to component
+- Verify line IDs are unique
+
+### Bar Selection Not Working
+
+**Problem**: Clicking bars doesn't select them
+
+**Solutions**:
+- Check `enableBarSelection={true}` is set
+- Verify `onBarClick` callback is provided
+- Ensure bars have valid timestamps
+- Check for JavaScript errors in console
+
+### Loading Indicator Stuck
+
+**Problem**: "Loading more data..." never disappears
+
+**Solution**: Ensure you're actually adding new bars with older timestamps:
+
+```typescript
+const handleLoadMore = async (oldestTimestamp: number) => {
+  const olderBars = await fetchData();
+
+  // Must prepend bars OLDER than oldestTimestamp
+  setBars(prev => [...olderBars, ...prev]);
+};
+```
+
+## TypeScript Types
+
+### OHLCVBar
+
+```typescript
+interface OHLCVBar {
+  timestamp: number;      // Unix timestamp in milliseconds
+  open: number;          // Opening price
+  high: number;          // Highest price
+  low: number;           // Lowest price
+  close: number;         // Closing price
+  volume: number;        // Trading volume
+  trade_count?: number;  // Optional: number of trades
+  vwap?: number;        // Optional: volume-weighted average price
+}
+```
+
+### ChartLine
+
+```typescript
+interface ChartLine {
+  id: string;                                    // Unique identifier
+  price: number;                                 // Price level
+  color: string;                                 // Hex color
+  lineWidth?: number;                            // Line thickness (default: 2)
+  lineStyle?: 'solid' | 'dashed' | 'dotted';    // Line style (default: 'solid')
+  title?: string;                                // Label text
+  type?: 'entry' | 'stopLoss' | 'takeProfit';   // Line type
+}
+```
+
+### ChartComponentProps
+
+```typescript
+interface ChartComponentProps {
+  bars: OHLCVBar[];
+  onLoadMoreData?: (oldestTimestamp: number) => void;
+  indicators?: IndicatorInstance[];
+  lines?: ChartLine[];
+  onBarUpdate?: (updatedBar: OHLCVBar) => void;
+  onNewBar?: (newBar: OHLCVBar) => void;
+  onDeleteLine?: (lineId: string) => void;
+  onAddLine?: (type: 'entry' | 'stopLoss' | 'takeProfit', price: number) => void;
+  enableBarSelection?: boolean;
+  onBarClick?: (bar: OHLCVBar | null) => void;
+}
+```
+
+## Related Documentation
+
+- [Creating Indicators](./creating-indicators.md) - Build custom technical indicators
+- [Architecture](./architecture.md) - System architecture and design decisions
+- [API Reference](./api-reference.md) - Complete API documentation
+- [Examples](./examples.md) - More example implementations
+- [Lightweight Charts](../learnings/lightweight-charts.md) - Learn about the underlying chart library
+
+---
+
+**Need help?** Check the [troubleshooting section](#troubleshooting) or review the [examples](./examples.md) for common patterns.
