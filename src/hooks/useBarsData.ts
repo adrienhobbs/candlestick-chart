@@ -113,8 +113,13 @@ export function useBarsData(options: UseBarsDataOptions = {}): UseBarsDataReturn
 
         if (isMountedRef.current) {
           const validated = validateAndNormalizeBars(data);
-          const sorted = sortBars(validated);
-          setBarsState(sorted);
+
+          if (params.before) {
+            prependBars(validated);
+          } else {
+            const sorted = sortBars(validated);
+            setBarsState(sorted);
+          }
         }
       } catch (err) {
         if (isMountedRef.current) {
@@ -128,7 +133,7 @@ export function useBarsData(options: UseBarsDataOptions = {}): UseBarsDataReturn
         }
       }
     },
-    [adapter, symbol, timeframe, limit]
+    [adapter, symbol, timeframe, limit, prependBars]
   );
 
   const subscribe = useCallback(() => {
