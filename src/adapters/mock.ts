@@ -27,15 +27,19 @@ export class MockAdapter implements BarDataAdapter {
 
       bars.push({
         timestamp,
-        open,
-        high,
-        low,
-        close,
+        open: Math.max(open, 0.01),
+        high: Math.max(high, 0.01),
+        low: Math.max(low, 0.01),
+        close: Math.max(close, 0.01),
         volume: Math.floor(Math.random() * 10000) + 1000,
       });
 
-      price = close;
+      price = Math.max(close, 1);
     }
+
+    console.log(`MockAdapter: Generated ${bars.length} bars`);
+    console.log('First bar:', bars[0]);
+    console.log('Last bar:', bars[bars.length - 1]);
 
     return bars;
   }

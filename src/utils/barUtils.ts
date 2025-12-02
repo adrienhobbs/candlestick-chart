@@ -53,7 +53,8 @@ export function mergeBars(existingBars: OHLCVBar[], newBars: OHLCVBar[]): OHLCVB
 }
 
 export function validateAndNormalizeBars(bars: any[]): OHLCVBar[] {
-  return bars
+  console.log(`validateAndNormalizeBars: received ${bars.length} bars`);
+  const validated = bars
     .filter(bar => {
       if (!validateBar(bar)) {
         console.warn('Invalid bar data:', bar);
@@ -65,6 +66,8 @@ export function validateAndNormalizeBars(bars: any[]): OHLCVBar[] {
       ...bar,
       timestamp: normalizeTimestamp(bar.timestamp),
     }));
+  console.log(`validateAndNormalizeBars: returning ${validated.length} valid bars`);
+  return validated;
 }
 
 export function updateBarInArray(bars: OHLCVBar[], updatedBar: OHLCVBar): OHLCVBar[] {
