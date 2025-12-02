@@ -222,11 +222,15 @@ export function useBarsData(options: UseBarsDataOptions = {}): UseBarsDataReturn
   }, [autoSubscribe, adapter, subscribe, unsubscribe]);
 
   useEffect(() => {
+    isMountedRef.current = true;
     return () => {
       isMountedRef.current = false;
-      unsubscribe();
+      if (subscriptionRef.current) {
+        subscriptionRef.current.unsubscribe();
+        subscriptionRef.current = null;
+      }
     };
-  }, [unsubscribe]);
+  }, []);
 
   return {
     bars,
