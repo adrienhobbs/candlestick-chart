@@ -57,6 +57,8 @@ export function useBarsData(options: UseBarsDataOptions = {}): UseBarsDataReturn
 
   const subscriptionRef = useRef<RealtimeSubscription | null>(null);
   const isMountedRef = useRef(true);
+  const hasInitialFetchRef = useRef(false);
+  const isFetchingRef = useRef(false);
 
   const setBars = useCallback((newBars: OHLCVBar[]) => {
     const validated = validateAndNormalizeBars(newBars);
@@ -97,8 +99,14 @@ export function useBarsData(options: UseBarsDataOptions = {}): UseBarsDataReturn
         return;
       }
 
+      if (isFetchingRef.current) {
+        console.log('fetchHistorical: already fetching, skipping');
+        return;
+      }
+
       console.log('fetchHistorical called, params:', params);
       console.log('isMountedRef.current:', isMountedRef.current);
+      isFetchingRef.current = true;
       setLoading(true);
       setError(null);
 
@@ -139,6 +147,7 @@ export function useBarsData(options: UseBarsDataOptions = {}): UseBarsDataReturn
         }
       } finally {
         console.log('Finally block executing, isMountedRef.current:', isMountedRef.current);
+        isFetchingRef.current = false;
         if (isMountedRef.current) {
           console.log('Setting loading to false');
           setLoading(false);
@@ -204,9 +213,10 @@ export function useBarsData(options: UseBarsDataOptions = {}): UseBarsDataReturn
   }, [fetchHistorical]);
 
   useEffect(() => {
-    console.log('useEffect[autoFetch] running, autoFetch:', autoFetch, 'adapter:', !!adapter);
-    if (autoFetch && adapter) {
-      console.log('Calling fetchHistorical from useEffect');
+    console.log('useEffect[autoFetch] running, autoFetch:', autoFetch, 'adapter:', !!adapter, 'hasInitialFetch:', hasInitialFetchRef.current);
+    if (autoFetch && adapter && !hasInitialFetchRef.current) {
+      console.log('Calling fetchHistorical from useEffect (initial fetch)');
+      hasInitialFetchRef.current = true;
       fetchHistorical();
     }
   }, [autoFetch, adapter, fetchHistorical]);
