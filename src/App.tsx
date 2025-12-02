@@ -6,6 +6,7 @@ import IndicatorBrowser from './components/IndicatorBrowser';
 import { useChartAPI } from './hooks/useChartAPI';
 import { useBarsData } from './hooks/useBarsData';
 import { AlpacaBarAdapter } from './adapters/alpaca';
+import { MockAdapter } from './adapters/mock';
 import { OHLCVBar } from './types/chart';
 import { registerBuiltInIndicators } from './indicators/registry';
 import { createPersistenceAdapter } from './indicators/core/persistence';
@@ -1180,14 +1181,16 @@ function App() {
     return createPersistenceAdapter('localStorage');
   }, []);
 
-  const alpacaAdapter = useMemo(() => {
-    if (!USE_ALPACA) return undefined;
-    return new AlpacaBarAdapter({
-      apiKey: import.meta.env.VITE_ALPACA_API_KEY,
-      secretKey: import.meta.env.VITE_ALPACA_SECRET_KEY,
-      baseUrl: import.meta.env.VITE_ALPACA_BASE_URL,
-      wsUrl: import.meta.env.VITE_ALPACA_WS_URL,
-    });
+  const dataAdapter = useMemo(() => {
+    if (USE_ALPACA) {
+      return new AlpacaBarAdapter({
+        apiKey: import.meta.env.VITE_ALPACA_API_KEY,
+        secretKey: import.meta.env.VITE_ALPACA_SECRET_KEY,
+        baseUrl: import.meta.env.VITE_ALPACA_BASE_URL,
+        wsUrl: import.meta.env.VITE_ALPACA_WS_URL,
+      });
+    }
+    return new MockAdapter();
   }, []);
 
   const {
@@ -1213,61 +1216,20 @@ function App() {
     subscribe,
     unsubscribe,
   } = useBarsData({
-    adapter: alpacaAdapter,
+    adapter: dataAdapter,
     symbol,
     timeframe,
-    autoFetch: USE_ALPACA,
+    autoFetch: true,
     autoSubscribe: false,
     limit: 500,
   });
 
   const handleLoadMoreData = useCallback(async (oldestTimestamp: number) => {
-    if (USE_ALPACA && alpacaAdapter) {
-      await fetchHistorical({
-        before: oldestTimestamp,
-        limit: 100,
-      });
-    } else {
-      await new Promise(resolve => setTimeout(resolve, 1000));
-
-      if (bars.length === 0) return;
-
-      const sortedBars = [...bars].sort((a, b) => a.timestamp - b.timestamp);
-      const oldestBar = sortedBars[0];
-      if (!oldestBar) return;
-
-      const interval = 300000;
-      const count = 100;
-      const newBars: OHLCVBar[] = [];
-      let currentPrice = oldestBar.open;
-
-      for (let i = count; i > 0; i--) {
-        const timestamp = oldestBar.timestamp - i * interval;
-        const change = (Math.random() - 0.5) * 0.3;
-        currentPrice = Math.max(14.0, Math.min(18.0, currentPrice + change));
-
-        const open = currentPrice;
-        const high = open + Math.random() * 0.15;
-        const low = open - Math.random() * 0.15;
-        const close = low + Math.random() * (high - low);
-
-        newBars.push({
-          timestamp,
-          open: parseFloat(open.toFixed(3)),
-          high: parseFloat(high.toFixed(3)),
-          low: parseFloat(low.toFixed(3)),
-          close: parseFloat(close.toFixed(3)),
-          volume: Math.floor(Math.random() * 15000) + 1000,
-          trade_count: Math.floor(Math.random() * 200) + 10,
-          vwap: parseFloat(((high + low + close) / 3).toFixed(6)),
-        });
-
-        currentPrice = close;
-      }
-
-      prependBars(newBars);
-    }
-  }, [USE_ALPACA, alpacaAdapter, fetchHistorical, bars, prependBars]);
+    await fetchHistorical({
+      before: oldestTimestamp,
+      limit: 100,
+    });
+  }, [fetchHistorical]);
 
   const handleAddIndicator = (definitionId: string) => {
     addIndicator(definitionId);
@@ -1295,7 +1257,7 @@ function App() {
     }
   };
 
-  const displayBars = USE_ALPACA ? bars : (bars.length > 0 ? bars : historicalBars);
+  const displayBars = bars.length > 0 ? bars : historicalBars;
 
   return (
     <div className="min-h-screen bg-slate-900">
