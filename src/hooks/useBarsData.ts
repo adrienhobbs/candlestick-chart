@@ -97,6 +97,7 @@ export function useBarsData(options: UseBarsDataOptions = {}): UseBarsDataReturn
         return;
       }
 
+      console.log('fetchHistorical called, setting loading to true');
       setLoading(true);
       setError(null);
 
@@ -115,7 +116,7 @@ export function useBarsData(options: UseBarsDataOptions = {}): UseBarsDataReturn
           const validated = validateAndNormalizeBars(data);
 
           if (params.before) {
-            prependBars(validated);
+            setBarsState(prev => prependBarsUtil(prev, validated));
           } else {
             const sorted = sortBars(validated);
             setBarsState(sorted);
@@ -129,11 +130,12 @@ export function useBarsData(options: UseBarsDataOptions = {}): UseBarsDataReturn
         }
       } finally {
         if (isMountedRef.current) {
+          console.log('fetchHistorical finished, setting loading to false');
           setLoading(false);
         }
       }
     },
-    [adapter, symbol, timeframe, limit, prependBars]
+    [adapter, symbol, timeframe, limit]
   );
 
   const subscribe = useCallback(() => {
