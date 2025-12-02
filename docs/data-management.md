@@ -736,6 +736,23 @@ async function fetchWithRetry(fn: () => Promise<any>, retries = 3) {
 4. Ensure timestamps are in milliseconds
 5. Validate bar data format matches `OHLCVBar` interface
 
+### Bars Not Updating After Initial Load
+
+**Problem**: Chart shows initial data but doesn't update when new data arrives
+
+**Common Cause**: Using fallback data that conflicts with adapter data
+
+```typescript
+// ❌ BAD - Don't do this
+const displayBars = bars.length > 0 ? bars : fallbackBars;
+<ChartComponent bars={displayBars} />
+
+// ✅ GOOD - Pass adapter data directly
+<ChartComponent bars={bars} />
+```
+
+**Why**: If fallback data has more bars than initial adapter data, the chart thinks data was lost (not gained) and won't update. Always pass the adapter's `bars` directly to the chart.
+
 ### Real-Time Updates Not Working
 
 **Problem**: WebSocket not receiving data
