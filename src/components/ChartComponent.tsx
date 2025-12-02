@@ -469,7 +469,7 @@ export default function ChartComponent({
       const definition = indicatorRegistry.get(indicator.definitionId);
       if (!definition) return;
 
-      const data = indicatorCalculator.calculate(indicator, bars);
+      const data = indicatorCalculator.calculate(indicator, barsRef.current);
       if (!data || data.length === 0) return;
 
       const seriesType = definition.renderConfig.seriesType;
@@ -545,7 +545,7 @@ export default function ChartComponent({
         indicatorSeriesRef.current.set(indicator.id, series);
       }
     });
-  }, [indicators, bars]);
+  }, [indicators]);
 
   useEffect(() => {
     const separateIndicators = indicators.filter((indicator) => {
@@ -590,7 +590,7 @@ export default function ChartComponent({
 
       chart.timeScale().fitContent();
 
-      const data = indicatorCalculator.calculate(indicator, bars);
+      const data = indicatorCalculator.calculate(indicator, barsRef.current);
       if (!data || data.length === 0) return;
 
       const seriesType = definition.renderConfig.seriesType;
@@ -629,7 +629,65 @@ export default function ChartComponent({
       });
       separatePaneCharts.current.clear();
     };
-  }, [separatePaneIndicators, bars]);
+  }, [separatePaneIndicators]);
+
+  useEffect(() => {
+    if (!chartRef.current || indicators.length === 0) return;
+
+    const overlayIndicators = indicators.filter((indicator) => {
+      const definition = indicatorRegistry.get(indicator.definitionId);
+      return definition && definition.renderConfig.overlay !== false;
+    });
+
+    overlayIndicators.forEach((indicator) => {
+      const definition = indicatorRegistry.get(indicator.definitionId);
+      if (!definition) return;
+
+      const data = indicatorCalculator.calculate(indicator, barsRef.current);
+      if (!data || data.length === 0) return;
+
+      if (definition.renderConfig.outputCount === 1) {
+        const series = indicatorSeriesRef.current.get(indicator.id);
+        if (series) {
+          const lineData = data.map(d => ({ time: d.time as Time, value: d.value }));
+          series.setData(lineData as any);
+        }
+      } else if (definition.renderConfig.hasBandFill && definition.renderConfig.fillBands) {
+        const { upper: upperField, lower: lowerField } = definition.renderConfig.fillBands;
+
+        const upperSeries = indicatorSeriesRef.current.get(`${indicator.id}-upper`);
+        const middleSeries = indicatorSeriesRef.current.get(`${indicator.id}-middle`);
+        const lowerSeries = indicatorSeriesRef.current.get(`${indicator.id}-lower`);
+
+        if (upperSeries && middleSeries && lowerSeries) {
+          const upperData = data.map(d => ({ time: d.time as Time, value: d[upperField] })).filter(d => !isNaN(d.value));
+          const middleData = data.map(d => ({ time: d.time as Time, value: d.value })).filter(d => !isNaN(d.value));
+          const lowerData = data.map(d => ({ time: d.time as Time, value: d[lowerField] })).filter(d => !isNaN(d.value));
+
+          upperSeries.setData(upperData as any);
+          middleSeries.setData(middleData as any);
+          lowerSeries.setData(lowerData as any);
+        }
+      }
+    });
+
+    separatePaneIndicators.forEach((indicator) => {
+      const definition = indicatorRegistry.get(indicator.definitionId);
+      if (!definition) return;
+
+      const data = indicatorCalculator.calculate(indicator, barsRef.current);
+      if (!data || data.length === 0) return;
+
+      const chartData = separatePaneCharts.current.get(indicator.id);
+      if (!chartData) return;
+
+      const series = Array.from((chartData.chart as any).series() || [])[0];
+      if (series) {
+        const formattedData = data.map(d => ({ time: d.time as Time, value: d.value }));
+        series.setData(formattedData as any);
+      }
+    });
+  }, [bars, indicators, separatePaneIndicators]);
 
   // Resize charts when pane heights change
   useEffect(() => {
