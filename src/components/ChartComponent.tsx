@@ -371,6 +371,8 @@ export default function ChartComponent({
         color: bar.close >= bar.open ? '#10b98180' : '#ef444480',
       }));
 
+      console.log('candleData sample (first 3):', candleData.slice(0, 3));
+      console.log('candleData sample (last 3):', candleData.slice(-3));
       candlestickSeriesRef.current.setData(candleData);
       volumeSeriesRef.current.setData(volumeData);
     } else if (lastBarChanged && uniqueBars.length > 0 && !hasNewBars) {

@@ -1257,7 +1257,7 @@ function App() {
     }
   };
 
-  const displayBars = bars.length > 0 ? bars : historicalBars;
+  const displayBars = bars;
 
   return (
     <div className="min-h-screen bg-slate-900">
