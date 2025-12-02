@@ -97,7 +97,8 @@ export function useBarsData(options: UseBarsDataOptions = {}): UseBarsDataReturn
         return;
       }
 
-      console.log('fetchHistorical called, setting loading to true');
+      console.log('fetchHistorical called, params:', params);
+      console.log('isMountedRef.current:', isMountedRef.current);
       setLoading(true);
       setError(null);
 
@@ -110,28 +111,39 @@ export function useBarsData(options: UseBarsDataOptions = {}): UseBarsDataReturn
           after: params.after,
         };
 
+        console.log('Calling adapter.fetchHistoricalBars with:', fetchParams);
         const data = await adapter.fetchHistoricalBars(fetchParams);
+        console.log('adapter.fetchHistoricalBars returned, data.length:', data.length);
 
         if (isMountedRef.current) {
+          console.log('Component still mounted, processing data');
           const validated = validateAndNormalizeBars(data);
 
           if (params.before) {
+            console.log('Prepending bars (before param present)');
             setBarsState(prev => prependBarsUtil(prev, validated));
           } else {
+            console.log('Setting initial bars (no before param)');
             const sorted = sortBars(validated);
             setBarsState(sorted);
           }
+        } else {
+          console.log('Component unmounted, skipping data update');
         }
       } catch (err) {
+        console.log('Error caught:', err);
         if (isMountedRef.current) {
           const error = err instanceof Error ? err : new Error('Failed to fetch historical data');
           setError(error);
           console.error('Failed to fetch historical data:', error);
         }
       } finally {
+        console.log('Finally block executing, isMountedRef.current:', isMountedRef.current);
         if (isMountedRef.current) {
-          console.log('fetchHistorical finished, setting loading to false');
+          console.log('Setting loading to false');
           setLoading(false);
+        } else {
+          console.log('Skipping setLoading(false) - component unmounted');
         }
       }
     },
@@ -192,7 +204,9 @@ export function useBarsData(options: UseBarsDataOptions = {}): UseBarsDataReturn
   }, [fetchHistorical]);
 
   useEffect(() => {
+    console.log('useEffect[autoFetch] running, autoFetch:', autoFetch, 'adapter:', !!adapter);
     if (autoFetch && adapter) {
+      console.log('Calling fetchHistorical from useEffect');
       fetchHistorical();
     }
   }, [autoFetch, adapter, fetchHistorical]);
