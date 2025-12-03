@@ -422,9 +422,262 @@ function PollingChart() {
 }
 ```
 
-### Recipe 5: Complete Alpaca Integration
+### Recipe 5: Zustand State Management
 
-Full-featured implementation with all controls.
+Using Zustand for global chart state management, perfect for apps where multiple components need access to chart data.
+
+```typescript
+// stores/chartStore.ts
+import { create } from 'zustand';
+import { OHLCVBar } from '../types/chart';
+import { BarDataAdapter, HistoricalDataParams, RealtimeSubscription } from '../adapters/types';
+import {
+  validateAndNormalizeBars,
+  sortBars,
+  prependBars as prependBarsUtil,
+  updateCurrentBar as updateCurrentBarUtil,
+  appendBar as appendBarUtil,
+} from '../utils/barUtils';
+
+interface ChartState {
+  bars: OHLCVBar[];
+  loading: boolean;
+  error: Error | null;
+  connected: boolean;
+  adapter: BarDataAdapter | null;
+  symbol: string;
+  timeframe: string;
+  subscription: RealtimeSubscription | null;
+
+  setAdapter: (adapter: BarDataAdapter) => void;
+  setSymbol: (symbol: string) => void;
+  setTimeframe: (timeframe: string) => void;
+
+  setBars: (bars: OHLCVBar[]) => void;
+  appendBar: (bar: OHLCVBar) => void;
+  prependBars: (bars: OHLCVBar[]) => void;
+  updateCurrentBar: (price: number, volume: number) => void;
+  clearBars: () => void;
+
+  fetchHistorical: (params?: Partial<HistoricalDataParams>) => Promise<void>;
+  subscribe: () => void;
+  unsubscribe: () => void;
+}
+
+export const useChartStore = create<ChartState>((set, get) => ({
+  bars: [],
+  loading: false,
+  error: null,
+  connected: false,
+  adapter: null,
+  symbol: 'AAPL',
+  timeframe: '5Min',
+  subscription: null,
+
+  setAdapter: (adapter) => set({ adapter }),
+  setSymbol: (symbol) => set({ symbol }),
+  setTimeframe: (timeframe) => set({ timeframe }),
+
+  setBars: (newBars) => {
+    const validated = validateAndNormalizeBars(newBars);
+    const sorted = sortBars(validated);
+    set({ bars: sorted });
+  },
+
+  appendBar: (bar) => {
+    const current = get().bars;
+    set({ bars: appendBarUtil(current, bar) });
+  },
+
+  prependBars: (newBars) => {
+    const validated = validateAndNormalizeBars(newBars);
+    const current = get().bars;
+    set({ bars: prependBarsUtil(current, validated) });
+  },
+
+  updateCurrentBar: (price, volume) => {
+    const current = get().bars;
+    set({ bars: updateCurrentBarUtil(current, price, volume) });
+  },
+
+  clearBars: () => set({ bars: [] }),
+
+  fetchHistorical: async (params = {}) => {
+    const { adapter, symbol, timeframe, bars } = get();
+
+    if (!adapter) {
+      set({ error: new Error('No adapter configured') });
+      return;
+    }
+
+    set({ loading: true, error: null });
+
+    try {
+      const fetchParams: HistoricalDataParams = {
+        symbol: params.symbol || symbol,
+        timeframe: params.timeframe || timeframe,
+        limit: params.limit || 500,
+        before: params.before,
+        after: params.after,
+      };
+
+      const data = await adapter.fetchHistoricalBars(fetchParams);
+      const validated = validateAndNormalizeBars(data);
+
+      if (params.before) {
+        set({ bars: prependBarsUtil(bars, validated) });
+      } else {
+        const sorted = sortBars(validated);
+        set({ bars: sorted });
+      }
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error('Failed to fetch data');
+      set({ error });
+    } finally {
+      set({ loading: false });
+    }
+  },
+
+  subscribe: () => {
+    const { adapter, symbol, subscription } = get();
+
+    if (!adapter?.subscribeRealtime) {
+      console.warn('Adapter does not support real-time subscriptions');
+      return;
+    }
+
+    if (subscription) {
+      console.warn('Already subscribed');
+      return;
+    }
+
+    const sub = adapter.subscribeRealtime(symbol, {
+      onBar: (bar) => get().appendBar(bar),
+      onTrade: (price, volume) => get().updateCurrentBar(price, volume),
+      onError: (err) => set({ error: err, connected: false }),
+      onConnect: () => set({ connected: true }),
+      onDisconnect: () => set({ connected: false }),
+    });
+
+    set({ subscription: sub });
+  },
+
+  unsubscribe: () => {
+    const { subscription } = get();
+    if (subscription) {
+      subscription.unsubscribe();
+      set({ subscription: null, connected: false });
+    }
+  },
+}));
+```
+
+```typescript
+// App.tsx or Chart component
+import { useEffect } from 'react';
+import { useChartStore } from './stores/chartStore';
+import { AlpacaBarAdapter } from './adapters/alpaca';
+import ChartComponent from './components/ChartComponent';
+
+function TradingChart() {
+  const {
+    bars,
+    loading,
+    error,
+    connected,
+    setAdapter,
+    fetchHistorical,
+    subscribe,
+    unsubscribe,
+  } = useChartStore();
+
+  useEffect(() => {
+    const adapter = new AlpacaBarAdapter({
+      apiKey: import.meta.env.VITE_ALPACA_API_KEY,
+      secretKey: import.meta.env.VITE_ALPACA_SECRET_KEY,
+    });
+
+    setAdapter(adapter);
+    fetchHistorical();
+  }, [setAdapter, fetchHistorical]);
+
+  const handleLoadMore = async (oldestTimestamp: number) => {
+    await fetchHistorical({ before: oldestTimestamp, limit: 100 });
+  };
+
+  if (loading && bars.length === 0) return <div>Loading...</div>;
+  if (error) return <div>Error: {error.message}</div>;
+
+  return (
+    <div>
+      <div className="controls">
+        <button onClick={() => fetchHistorical()}>Refresh</button>
+        <button onClick={() => connected ? unsubscribe() : subscribe()}>
+          {connected ? 'Disconnect' : 'Connect'} Live
+        </button>
+        <span>{connected ? '🟢 Connected' : '⚫ Disconnected'}</span>
+      </div>
+      <ChartComponent bars={bars} onLoadMoreData={handleLoadMore} />
+    </div>
+  );
+}
+```
+
+**Benefits of Zustand Integration:**
+
+- **Global State**: Multiple components can access chart data
+- **No Prop Drilling**: Access bars anywhere with `useChartStore()`
+- **Persistence**: Easy to add middleware for localStorage persistence
+- **DevTools**: Built-in devtools support for debugging
+- **Selectors**: Efficiently subscribe to specific slices of state
+
+**Example: Using selectors in other components**
+
+```typescript
+// Sidebar.tsx - Shows current price without re-rendering on every bar
+function Sidebar() {
+  const lastBar = useChartStore((state) =>
+    state.bars[state.bars.length - 1]
+  );
+
+  if (!lastBar) return null;
+
+  return (
+    <div>
+      <h3>Current Price</h3>
+      <p>${lastBar.close.toFixed(2)}</p>
+    </div>
+  );
+}
+
+// Statistics.tsx - Compute stats without storing in state
+function Statistics() {
+  const stats = useChartStore((state) => {
+    const bars = state.bars;
+    if (bars.length === 0) return null;
+
+    const high = Math.max(...bars.map(b => b.high));
+    const low = Math.min(...bars.map(b => b.low));
+    const volume = bars.reduce((sum, b) => sum + b.volume, 0);
+
+    return { high, low, volume };
+  });
+
+  if (!stats) return null;
+
+  return (
+    <div>
+      <p>High: ${stats.high.toFixed(2)}</p>
+      <p>Low: ${stats.low.toFixed(2)}</p>
+      <p>Volume: {stats.volume.toLocaleString()}</p>
+    </div>
+  );
+}
+```
+
+### Recipe 6: Complete Alpaca Integration
+
+Full-featured implementation with all controls using the built-in hook.
 
 ```typescript
 import { useBarsData } from './hooks/useBarsData';
