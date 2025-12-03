@@ -20,7 +20,6 @@ import { IndicatorInstance } from '../indicators/core/types';
 import { indicatorRegistry } from '../indicators/core/registry';
 import { indicatorCalculator } from '../indicators/core/calculator';
 import { BandsPrimitive } from '../indicators/primitives/BandsPrimitive';
-import { ResizableIndicatorPane } from './ResizableIndicatorPane';
 
 interface ChartComponentProps {
   bars: OHLCVBar[];
@@ -52,13 +51,13 @@ export default function ChartComponent({
   const candlestickSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
   const volumeSeriesRef = useRef<ISeriesApi<'Histogram'> | null>(null);
   const indicatorSeriesRef = useRef<Map<string, ISeriesApi<any>>>(new Map());
-  const separatePaneCharts = useRef<Map<string, { chart: IChartApi; container: HTMLDivElement; series: ISeriesApi<any> }>>(new Map());
+  const indicatorPaneIndexRef = useRef<Map<string, number>>(new Map());
+  const nextPaneIndexRef = useRef<number>(2);
   const priceLineRefs = useRef<Map<string, IPriceLine>>(new Map());
   const seriesMarkersRef = useRef<any>(null);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; price: number } | null>(null);
   const [linePositions, setLinePositions] = useState<Map<string, number>>(new Map());
-  const [separatePaneIndicators, setSeparatePaneIndicators] = useState<IndicatorInstance[]>([]);
   const [selectedBar, setSelectedBar] = useState<OHLCVBar | null>(null);
   const selectedBarRef = useRef<OHLCVBar | null>(null);
   const [spotlightPosition, setSpotlightPosition] = useState<{ x: number; width: number } | null>(null);
@@ -68,7 +67,6 @@ export default function ChartComponent({
   const barsRef = useRef<OHLCVBar[]>(bars);
   const isDraggingRef = useRef(false);
   const mouseDownPosRef = useRef<{ x: number; y: number } | null>(null);
-  const isSyncingRef = useRef(false);
 
 
   useEffect(() => {
@@ -78,6 +76,11 @@ export default function ChartComponent({
       layout: {
         background: { type: 'solid', color: '#0f172a' },
         textColor: '#94a3b8',
+        panes: {
+          enableResize: true,
+          separatorColor: '#1e293b',
+          separatorHoverColor: 'rgba(148,163,184,0.5)',
+        },
       },
       grid: {
         vertLines: { color: '#1e293b' },
@@ -114,22 +117,15 @@ export default function ChartComponent({
       borderVisible: false,
       wickUpColor: '#10b981',
       wickDownColor: '#ef4444',
-    });
+    }, 0);
 
     const volumeSeries = chart.addSeries(HistogramSeries, {
       color: '#64748b',
       priceFormat: {
         type: 'volume',
       },
-      priceScaleId: 'volume',
-    });
-
-    chart.priceScale('volume').applyOptions({
-      scaleMargins: {
-        top: 0.8,
-        bottom: 0,
-      },
-    });
+      priceScaleId: '',
+    }, 1);
 
     chartRef.current = chart;
     candlestickSeriesRef.current = candlestickSeries;
@@ -149,16 +145,6 @@ export default function ChartComponent({
         if (oldestTimestamp) {
           onLoadMoreData(oldestTimestamp);
         }
-      }
-
-      if (logicalRange && !isSyncingRef.current) {
-        isSyncingRef.current = true;
-        separatePaneCharts.current.forEach(({ chart: paneChart }) => {
-          paneChart.timeScale().setVisibleLogicalRange(logicalRange);
-        });
-        setTimeout(() => {
-          isSyncingRef.current = false;
-        }, 0);
       }
     });
 
@@ -464,13 +450,10 @@ export default function ChartComponent({
       chartRef.current?.removeSeries(series);
     });
     indicatorSeriesRef.current.clear();
+    indicatorPaneIndexRef.current.clear();
+    nextPaneIndexRef.current = 2;
 
-    const overlayIndicators = indicators.filter((indicator) => {
-      const definition = indicatorRegistry.get(indicator.definitionId);
-      return definition && definition.renderConfig.overlay !== false;
-    });
-
-    overlayIndicators.forEach((indicator) => {
+    indicators.forEach((indicator) => {
       const definition = indicatorRegistry.get(indicator.definitionId);
       if (!definition) return;
 
@@ -478,6 +461,13 @@ export default function ChartComponent({
       if (!data || data.length === 0) return;
 
       const seriesType = definition.renderConfig.seriesType;
+      const isOverlay = definition.renderConfig.overlay !== false;
+      const paneIndex = isOverlay ? 0 : nextPaneIndexRef.current;
+
+      if (!isOverlay) {
+        indicatorPaneIndexRef.current.set(indicator.id, paneIndex);
+        nextPaneIndexRef.current++;
+      }
 
       if (seriesType === 'line') {
         if (definition.renderConfig.outputCount === 1) {
@@ -485,7 +475,7 @@ export default function ChartComponent({
             color: indicator.settings.color || '#3b82f6',
             lineWidth: indicator.settings.lineWidth || 2,
             title: indicator.name,
-          });
+          }, paneIndex);
           const lineData = data.map(d => ({ time: d.time as Time, value: d.value }));
           series.setData(lineData as LineData[]);
           indicatorSeriesRef.current.set(indicator.id, series);
@@ -496,17 +486,17 @@ export default function ChartComponent({
             color: indicator.settings.upperColor || '#ef4444',
             lineWidth: indicator.settings.lineWidth || 2,
             title: `${indicator.name} Upper`,
-          });
+          }, paneIndex);
           const middleSeries = chartRef.current!.addSeries(LineSeries, {
             color: indicator.settings.middleColor || indicator.settings.vwapColor || '#3b82f6',
             lineWidth: indicator.settings.lineWidth || 2,
             title: `${indicator.name} Middle`,
-          });
+          }, paneIndex);
           const lowerSeries = chartRef.current!.addSeries(LineSeries, {
             color: indicator.settings.lowerColor || '#10b981',
             lineWidth: indicator.settings.lineWidth || 2,
             title: `${indicator.name} Lower`,
-          });
+          }, paneIndex);
 
           const upperData = data.map(d => ({ time: d.time as Time, value: d[upperField] })).filter(d => !isNaN(d.value));
           const middleData = data.map(d => ({ time: d.time as Time, value: d.value })).filter(d => !isNaN(d.value));
@@ -533,7 +523,7 @@ export default function ChartComponent({
         const series = chartRef.current!.addSeries(HistogramSeries, {
           color: indicator.settings.color || '#8b5cf6',
           title: indicator.name,
-        });
+        }, paneIndex);
         const histData = data.map(d => ({ time: d.time as Time, value: d.value }));
         series.setData(histData as HistogramData[]);
         indicatorSeriesRef.current.set(indicator.id, series);
@@ -544,7 +534,7 @@ export default function ChartComponent({
           lineColor: indicator.settings.lineColor || '#3b82f6',
           lineWidth: indicator.settings.lineWidth || 2,
           title: indicator.name,
-        });
+        }, paneIndex);
         const areaData = data.map(d => ({ time: d.time as Time, value: d.value }));
         series.setData(areaData as LineData[]);
         indicatorSeriesRef.current.set(indicator.id, series);
@@ -553,105 +543,9 @@ export default function ChartComponent({
   }, [indicators]);
 
   useEffect(() => {
-    const separateIndicators = indicators.filter((indicator) => {
-      const definition = indicatorRegistry.get(indicator.definitionId);
-      return definition && definition.renderConfig.overlay === false;
-    });
-    setSeparatePaneIndicators(separateIndicators);
-  }, [indicators]);
-
-  useEffect(() => {
-    separatePaneCharts.current.forEach(({ chart }) => {
-      chart.remove();
-    });
-    separatePaneCharts.current.clear();
-
-    separatePaneIndicators.forEach((indicator) => {
-      const definition = indicatorRegistry.get(indicator.definitionId);
-      if (!definition) return;
-
-      const container = document.getElementById(`indicator-pane-${indicator.id}`);
-      if (!container) return;
-
-      const chart = createChart(container, {
-        width: container.clientWidth,
-        height: 200,
-        layout: {
-          background: { color: '#1e293b' },
-          textColor: '#94a3b8',
-        },
-        grid: {
-          vertLines: { color: '#334155' },
-          horzLines: { color: '#334155' },
-        },
-        timeScale: {
-          borderColor: '#475569',
-          timeVisible: true,
-        },
-        rightPriceScale: {
-          borderColor: '#475569',
-        },
-      });
-
-      chart.timeScale().fitContent();
-
-      const data = indicatorCalculator.calculate(indicator, barsRef.current);
-      if (!data || data.length === 0) return;
-
-      const seriesType = definition.renderConfig.seriesType;
-      let series: ISeriesApi<any>;
-
-      if (seriesType === 'line') {
-        series = chart.addSeries(LineSeries, {
-          color: indicator.settings.color || '#8b5cf6',
-          lineWidth: indicator.settings.lineWidth || 2,
-          title: indicator.name,
-        });
-        const lineData = data.map(d => ({ time: d.time as Time, value: d.value }));
-        series.setData(lineData as LineData[]);
-      } else if (seriesType === 'histogram') {
-        series = chart.addSeries(HistogramSeries, {
-          color: indicator.settings.color || '#8b5cf6',
-          title: indicator.name,
-        });
-        const histData = data.map(d => ({ time: d.time as Time, value: d.value }));
-        series.setData(histData as HistogramData[]);
-      } else {
-        return;
-      }
-
-      if (chartRef.current) {
-        chart.timeScale().subscribeVisibleLogicalRangeChange((timeRange) => {
-          if (timeRange && chartRef.current && !isSyncingRef.current) {
-            isSyncingRef.current = true;
-            chartRef.current.timeScale().setVisibleLogicalRange(timeRange);
-            setTimeout(() => {
-              isSyncingRef.current = false;
-            }, 0);
-          }
-        });
-      }
-
-      separatePaneCharts.current.set(indicator.id, { chart, container: container as HTMLDivElement, series });
-    });
-
-    return () => {
-      separatePaneCharts.current.forEach(({ chart }) => {
-        chart.remove();
-      });
-      separatePaneCharts.current.clear();
-    };
-  }, [separatePaneIndicators]);
-
-  useEffect(() => {
     if (!chartRef.current || indicators.length === 0) return;
 
-    const overlayIndicators = indicators.filter((indicator) => {
-      const definition = indicatorRegistry.get(indicator.definitionId);
-      return definition && definition.renderConfig.overlay !== false;
-    });
-
-    overlayIndicators.forEach((indicator) => {
+    indicators.forEach((indicator) => {
       const definition = indicatorRegistry.get(indicator.definitionId);
       if (!definition) return;
 
@@ -797,24 +691,6 @@ export default function ChartComponent({
           />
         )}
       </div>
-
-      {separatePaneIndicators.map((indicator) => (
-        <ResizableIndicatorPane
-          key={indicator.id}
-          indicatorName={indicator.name}
-          initialHeight={200}
-          minHeight={100}
-          maxHeight={600}
-          onHeightChange={(height) => {
-            const chartData = separatePaneCharts.current.get(indicator.id);
-            if (chartData) {
-              chartData.chart.applyOptions({ height });
-            }
-          }}
-        >
-          <div id={`indicator-pane-${indicator.id}`} className="w-full h-full" />
-        </ResizableIndicatorPane>
-      ))}
 
       {lines.map((line) => {
         const y = linePositions.get(line.id);
