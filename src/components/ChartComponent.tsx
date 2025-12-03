@@ -59,7 +59,6 @@ export default function ChartComponent({
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; price: number } | null>(null);
   const [linePositions, setLinePositions] = useState<Map<string, number>>(new Map());
   const [separatePaneIndicators, setSeparatePaneIndicators] = useState<IndicatorInstance[]>([]);
-  const [paneHeights, setPaneHeights] = useState<Map<string, number>>(new Map());
   const [selectedBar, setSelectedBar] = useState<OHLCVBar | null>(null);
   const selectedBarRef = useRef<OHLCVBar | null>(null);
   const [spotlightPosition, setSpotlightPosition] = useState<{ x: number; width: number } | null>(null);
@@ -69,6 +68,7 @@ export default function ChartComponent({
   const barsRef = useRef<OHLCVBar[]>(bars);
   const isDraggingRef = useRef(false);
   const mouseDownPosRef = useRef<{ x: number; y: number } | null>(null);
+  const isSyncingRef = useRef(false);
 
 
   useEffect(() => {
@@ -149,6 +149,16 @@ export default function ChartComponent({
         if (oldestTimestamp) {
           onLoadMoreData(oldestTimestamp);
         }
+      }
+
+      if (logicalRange && !isSyncingRef.current) {
+        isSyncingRef.current = true;
+        separatePaneCharts.current.forEach(({ chart: paneChart }) => {
+          paneChart.timeScale().setVisibleLogicalRange(logicalRange);
+        });
+        setTimeout(() => {
+          isSyncingRef.current = false;
+        }, 0);
       }
     });
 
@@ -612,8 +622,12 @@ export default function ChartComponent({
 
       if (chartRef.current) {
         chart.timeScale().subscribeVisibleLogicalRangeChange((timeRange) => {
-          if (timeRange && chartRef.current) {
+          if (timeRange && chartRef.current && !isSyncingRef.current) {
+            isSyncingRef.current = true;
             chartRef.current.timeScale().setVisibleLogicalRange(timeRange);
+            setTimeout(() => {
+              isSyncingRef.current = false;
+            }, 0);
           }
         });
       }
@@ -683,21 +697,6 @@ export default function ChartComponent({
       chartData.series.setData(formattedData as any);
     });
   }, [bars, indicators, separatePaneIndicators]);
-
-  // Resize charts when pane heights change
-  useEffect(() => {
-    paneHeights.forEach((height, indicatorId) => {
-      const chartData = separatePaneCharts.current.get(indicatorId);
-      if (chartData) {
-        chartData.chart.applyOptions({
-          height: height,
-          enableResize: true,
-          separatorColor: '#ff0000',
-          separatorHoverColor: '#00ff00',
-        });
-      }
-    });
-  }, [paneHeights]);
 
   useEffect(() => {
     console.log('Marker effect running, selectedBar:', selectedBar);
@@ -800,10 +799,21 @@ export default function ChartComponent({
       </div>
 
       {separatePaneIndicators.map((indicator) => (
-        <div key={indicator.id} className="w-full">
-          <div className="text-xs text-slate-400 px-2 py-1 bg-slate-800/50">{indicator.name}</div>
-          <div id={`indicator-pane-${indicator.id}`} className="w-full" style={{ height: '200px' }} />
-        </div>
+        <ResizableIndicatorPane
+          key={indicator.id}
+          indicatorName={indicator.name}
+          initialHeight={200}
+          minHeight={100}
+          maxHeight={600}
+          onHeightChange={(height) => {
+            const chartData = separatePaneCharts.current.get(indicator.id);
+            if (chartData) {
+              chartData.chart.applyOptions({ height });
+            }
+          }}
+        >
+          <div id={`indicator-pane-${indicator.id}`} className="w-full h-full" />
+        </ResizableIndicatorPane>
       ))}
 
       {lines.map((line) => {
