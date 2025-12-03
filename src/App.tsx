@@ -1266,7 +1266,6 @@ export const EquityBaselineChart = () => {
   );
 };
 
-export default EquityBaselineChart;
 function App() {
   const [selectedIndicator, setSelectedIndicator] = useState<any>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
