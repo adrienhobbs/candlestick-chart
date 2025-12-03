@@ -1229,15 +1229,7 @@ export const EquityBaselineChart = () => {
       // The zero line splits the chart colors
       baseValue: { type: 'price', price: 0 }, 
       
-      // Styling for "Run Up" (Above 0)
-      topLineColor: '#26a69a', // Teal/Green
-      topFillColor1: 'rgba(38, 166, 154, 0.28)',
-      topFillColor2: 'rgba(38, 166, 154, 0.05)',
       
-      // Styling for "Drawdown" (Below 0)
-      bottomLineColor: '#ef5350', // Red
-      bottomFillColor1: 'rgba(239, 83, 80, 0.05)',
-      bottomFillColor2: 'rgba(239, 83, 80, 0.28)',
       
       lineWidth: 2,
     });
