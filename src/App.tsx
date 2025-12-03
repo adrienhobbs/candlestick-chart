@@ -1279,7 +1279,6 @@ function App() {
   const [symbol, setSymbol] = useState('AAPL');
   const [timeframe, setTimeframe] = useState('5Min');
 
-  return <EquityBaselineChart />
   const persistenceAdapter = useMemo(() => {
     const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
     const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -1370,6 +1369,8 @@ function App() {
 
   return (
     <div className="min-h-screen bg-slate-900">
+    <EquityBaselineChart />
+
       <header className="bg-slate-800 border-b border-slate-700 px-6 py-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
