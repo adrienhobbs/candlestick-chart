@@ -1201,35 +1201,42 @@ export const EquityBaselineChart = () => {
       };
     });
 
-    // 2. Initialize Chart
-    const chart = createChart(chartContainerRef.current, {
-     layout: {
-        background: { type: 'solid', color: '#0f172a' },
-        textColor: '#94a3b8',
-        panes: {
-          enableResize: true,
-          separatorColor: '#1e293b',
-          separatorHoverColor: 'rgba(148,163,184,0.5)',
-        },
+   const chart = createChart(chartContainerRef.current, {
+      layout: {
+        background: { type: ColorType.Solid, color: '#131722' }, // Dark Charcoal
+        textColor: '#d1d4dc', // Light Grey Text
       },
       grid: {
-        vertLines: { visible: false },
-        horzLines: { color: '#f0f3fa' },
+        vertLines: { color: '#1f2937', visible: false }, // Subtle vertical lines
+        horzLines: { color: '#2B2B43' }, // Subtle horizontal lines
       },
       width: chartContainerRef.current.clientWidth,
       height: 400,
+      timeScale: {
+        borderColor: '#2B2B43',
+        timeVisible: true,
+      },
+      rightPriceScale: {
+        borderColor: '#2B2B43',
+      },
       localization: {
-        // Format price scale as percentage
         priceFormatter: (p) => p.toFixed(2) + '%',
       },
     });
 
-    // 3. Add Baseline Series (v5 Syntax)
+    // 3. Add Baseline Series (Dark Theme Colors)
     const baselineSeries = chart.addSeries(BaselineSeries, {
-      // The zero line splits the chart colors
-      baseValue: { type: 'price', price: 0 }, 
+      baseValue: { type: 'price', price: 0 },
       
+      // Top (Profit) - Bright Teal
+      topLineColor: '#00bfa5', 
+      topFillColor1: 'rgba(0, 191, 165, 0.28)',
+      topFillColor2: 'rgba(0, 191, 165, 0.05)',
       
+      // Bottom (Loss) - Bright Red/Pink
+      bottomLineColor: '#ff5252', 
+      bottomFillColor1: 'rgba(255, 82, 82, 0.05)',
+      bottomFillColor2: 'rgba(255, 82, 82, 0.28)',
       
       lineWidth: 2,
     });
