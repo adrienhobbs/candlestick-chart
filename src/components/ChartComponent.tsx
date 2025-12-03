@@ -576,21 +576,7 @@ export default function ChartComponent({
         }
       }
     });
-
-    separatePaneIndicators.forEach((indicator) => {
-      const definition = indicatorRegistry.get(indicator.definitionId);
-      if (!definition) return;
-
-      const data = indicatorCalculator.calculate(indicator, barsRef.current);
-      if (!data || data.length === 0) return;
-
-      const chartData = separatePaneCharts.current.get(indicator.id);
-      if (!chartData || !chartData.series) return;
-
-      const formattedData = data.map(d => ({ time: d.time as Time, value: d.value }));
-      chartData.series.setData(formattedData as any);
-    });
-  }, [bars, indicators, separatePaneIndicators]);
+  }, [bars, indicators]);
 
   useEffect(() => {
     console.log('Marker effect running, selectedBar:', selectedBar);
