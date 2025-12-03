@@ -691,6 +691,9 @@ export default function ChartComponent({
       if (chartData) {
         chartData.chart.applyOptions({
           height: height,
+          enableResize: true,
+          separatorColor: '#ff0000',
+          separatorHoverColor: '#00ff00',
         });
       }
     });
