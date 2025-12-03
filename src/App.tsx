@@ -1203,9 +1203,14 @@ export const EquityBaselineChart = () => {
 
     // 2. Initialize Chart
     const chart = createChart(chartContainerRef.current, {
-      layout: {
-        background: { type: 'solid', color: '#ffffff' },
-        textColor: '#333',
+     layout: {
+        background: { type: 'solid', color: '#0f172a' },
+        textColor: '#94a3b8',
+        panes: {
+          enableResize: true,
+          separatorColor: '#1e293b',
+          separatorHoverColor: 'rgba(148,163,184,0.5)',
+        },
       },
       grid: {
         vertLines: { visible: false },
