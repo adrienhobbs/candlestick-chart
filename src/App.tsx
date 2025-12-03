@@ -1162,7 +1162,111 @@ function generateHistoricalBars(count: number): OHLCVBar[] {
 }
 
 const historicalBars = generateHistoricalBars(500);
+import React, { useEffect, useRef } from 'react';
+import { createChart, BaselineSeries } from 'lightweight-charts';
 
+// Your raw trade signals
+const rawSignals = [
+  { "t": "2025-11-04T18:45:00Z", "entryIndex": 33, "exitTime": "2025-11-05T14:30:00Z", "pnlPercent": 2.5396986100870724 },
+  { "t": "2025-11-05T19:30:00Z", "entryIndex": 63, "exitTime": "2025-11-05T19:45:00Z", "pnlPercent": -1.2718200862882898 },
+  { "t": "2025-11-19T15:30:00Z", "entryIndex": 312, "exitTime": "2025-11-19T15:45:00Z", "pnlPercent": -1.8011331451481358 },
+  { "t": "2025-11-19T18:45:00Z", "entryIndex": 325, "exitTime": "2025-11-20T14:30:00Z", "pnlPercent": 2.901208533078136 },
+  { "t": "2025-11-21T17:30:00Z", "entryIndex": 373, "exitTime": "2025-11-21T20:00:00Z", "pnlPercent": 1.1852502194907795 },
+  { "t": "2025-11-21T18:15:00Z", "entryIndex": 376, "exitTime": "2025-11-21T20:45:00Z", "pnlPercent": 1.6858917480035607 },
+  { "t": "2025-11-24T18:45:00Z", "entryIndex": 404, "exitTime": "2025-11-24T20:30:00Z", "pnlPercent": 2.074066658830805 },
+  { "t": "2025-11-25T19:15:00Z", "entryIndex": 432, "exitTime": "2025-11-25T20:00:00Z", "pnlPercent": 1.7951871648992073 },
+  { "t": "2025-11-25T19:30:00Z", "entryIndex": 433, "exitTime": "2025-11-26T13:15:00Z", "pnlPercent": 1.749123624993227 },
+  { "t": "2025-11-26T18:15:00Z", "entryIndex": 455, "exitTime": "2025-11-26T20:45:00Z", "pnlPercent": 0.1243265644426073 }
+];
+
+export const EquityBaselineChart = () => {
+  const chartContainerRef = useRef(null);
+
+  useEffect(() => {
+    if (!chartContainerRef.current) return;
+
+    // 1. Prepare Data
+    // Remove duplicates based on entryIndex and sort by exitTime
+    const uniqueSignals = Array.from(new Map(rawSignals.map(s => [s.entryIndex, s])).values());
+    const sortedSignals = uniqueSignals.sort((a, b) => new Date(a.exitTime) - new Date(b.exitTime));
+
+    // Calculate Cumulative PnL
+    let runningPnL = 0;
+    const chartData = sortedSignals.map(signal => {
+      runningPnL += signal.pnlPercent;
+      return {
+        // Lightweight Charts expects seconds (Unix timestamp)
+        time: new Date(signal.exitTime).getTime() / 1000, 
+        value: runningPnL,
+      };
+    });
+
+    // 2. Initialize Chart
+    const chart = createChart(chartContainerRef.current, {
+      layout: {
+        background: { type: 'solid', color: '#ffffff' },
+        textColor: '#333',
+      },
+      grid: {
+        vertLines: { visible: false },
+        horzLines: { color: '#f0f3fa' },
+      },
+      width: chartContainerRef.current.clientWidth,
+      height: 400,
+      localization: {
+        // Format price scale as percentage
+        priceFormatter: (p) => p.toFixed(2) + '%',
+      },
+    });
+
+    // 3. Add Baseline Series (v5 Syntax)
+    const baselineSeries = chart.addSeries(BaselineSeries, {
+      // The zero line splits the chart colors
+      baseValue: { type: 'price', price: 0 }, 
+      
+      // Styling for "Run Up" (Above 0)
+      topLineColor: '#26a69a', // Teal/Green
+      topFillColor1: 'rgba(38, 166, 154, 0.28)',
+      topFillColor2: 'rgba(38, 166, 154, 0.05)',
+      
+      // Styling for "Drawdown" (Below 0)
+      bottomLineColor: '#ef5350', // Red
+      bottomFillColor1: 'rgba(239, 83, 80, 0.05)',
+      bottomFillColor2: 'rgba(239, 83, 80, 0.28)',
+      
+      lineWidth: 2,
+    });
+
+    baselineSeries.setData(chartData);
+    chart.timeScale().fitContent();
+
+    // 4. Handle Resizing
+    const handleResize = () => {
+      if (chartContainerRef.current) {
+        chart.applyOptions({ width: chartContainerRef.current.clientWidth });
+      }
+    };
+    window.addEventListener('resize', handleResize);
+
+    // Cleanup
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      chart.remove();
+    };
+  }, []);
+
+  return (
+    <div className="p-4 border rounded shadow-sm">
+      <h2 className="text-lg font-bold mb-4">Equity Curve (Baseline)</h2>
+      <div 
+        ref={chartContainerRef} 
+        style={{ width: '100%', height: '400px' }} 
+      />
+    </div>
+  );
+};
+
+export default EquityBaselineChart;
 function App() {
   const [selectedIndicator, setSelectedIndicator] = useState<any>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -1171,6 +1275,7 @@ function App() {
   const [symbol, setSymbol] = useState('AAPL');
   const [timeframe, setTimeframe] = useState('5Min');
 
+  return <EquityBaselineChart />
   const persistenceAdapter = useMemo(() => {
     const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
     const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
