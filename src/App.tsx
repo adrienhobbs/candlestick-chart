@@ -1163,7 +1163,7 @@ function generateHistoricalBars(count: number): OHLCVBar[] {
 
 const historicalBars = generateHistoricalBars(500);
 import React, { useEffect, useRef } from 'react';
-import { createChart, BaselineSeries } from 'lightweight-charts';
+import { createChart, BaselineSeries, ColorType } from 'lightweight-charts';
 
 // Your raw trade signals
 const rawSignals = [
