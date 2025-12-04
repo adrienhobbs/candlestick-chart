@@ -101,17 +101,49 @@ export function useChartAPI(options?: UseChartAPIOptions) {
     [addLine]
   );
 
+  const addSupportLine = useCallback(
+    (price: number) => {
+      const id = `support-${Date.now()}`;
+      addLine(id, price, {
+        color: '#10b981',
+        title: 'Support',
+        lineStyle: 'dotted',
+      });
+    },
+    [addLine]
+  );
+
+  const addResistanceLine = useCallback(
+    (price: number) => {
+      const id = `resistance-${Date.now()}`;
+      addLine(id, price, {
+        color: '#f97316',
+        title: 'Resistance',
+        lineStyle: 'dotted',
+      });
+    },
+    [addLine]
+  );
+
+  const clearAllLines = useCallback(() => {
+    setLines([]);
+  }, []);
+
   const addLineByType = useCallback(
-    (type: 'entry' | 'stopLoss' | 'takeProfit', price: number) => {
+    (type: 'entry' | 'stopLoss' | 'takeProfit' | 'support' | 'resistance', price: number) => {
       if (type === 'entry') {
         addEntryLine(price);
       } else if (type === 'stopLoss') {
         addStopLoss(price);
       } else if (type === 'takeProfit') {
         addTakeProfit(price);
+      } else if (type === 'support') {
+        addSupportLine(price);
+      } else if (type === 'resistance') {
+        addResistanceLine(price);
       }
     },
-    [addEntryLine, addStopLoss, addTakeProfit]
+    [addEntryLine, addStopLoss, addTakeProfit, addSupportLine, addResistanceLine]
   );
 
   const addIndicator = useCallback((definitionId: string, customSettings?: Record<string, any>) => {
@@ -147,6 +179,9 @@ export function useChartAPI(options?: UseChartAPIOptions) {
     addEntryLine,
     addStopLoss,
     addTakeProfit,
+    addSupportLine,
+    addResistanceLine,
+    clearAllLines,
     addLineByType,
     addIndicator,
     removeIndicator,

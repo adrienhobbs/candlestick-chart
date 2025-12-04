@@ -29,7 +29,8 @@ interface ChartComponentProps {
   onBarUpdate?: (updatedBar: OHLCVBar) => void;
   onNewBar?: (newBar: OHLCVBar) => void;
   onDeleteLine?: (lineId: string) => void;
-  onAddLine?: (type: 'entry' | 'stopLoss' | 'takeProfit', price: number) => void;
+  onAddLine?: (type: 'entry' | 'stopLoss' | 'takeProfit' | 'support' | 'resistance', price: number) => void;
+  onClearAllLines?: () => void;
   enableBarSelection?: boolean;
   onBarClick?: (bar: OHLCVBar | null) => void;
 }
@@ -43,6 +44,7 @@ export default function ChartComponent({
   onNewBar,
   onDeleteLine,
   onAddLine,
+  onClearAllLines,
   enableBarSelection = true,
   onBarClick,
 }: ChartComponentProps) {
@@ -647,9 +649,16 @@ export default function ChartComponent({
     }
   };
 
-  const handleAddLineFromContext = (type: 'entry' | 'stopLoss' | 'takeProfit') => {
+  const handleAddLineFromContext = (type: 'entry' | 'stopLoss' | 'takeProfit' | 'support' | 'resistance') => {
     if (onAddLine && contextMenu) {
       onAddLine(type, contextMenu.price);
+      setContextMenu(null);
+    }
+  };
+
+  const handleClearAllLines = () => {
+    if (onClearAllLines) {
+      onClearAllLines();
       setContextMenu(null);
     }
   };
@@ -700,7 +709,7 @@ export default function ChartComponent({
 
       {contextMenu && (
         <div
-          className="absolute bg-slate-800 border border-slate-600 rounded-lg shadow-xl z-30 py-1 min-w-[160px]"
+          className="absolute bg-slate-800 border border-slate-600 rounded-lg shadow-xl z-30 py-1 min-w-[180px]"
           style={{
             left: `${contextMenu.x}px`,
             top: `${contextMenu.y}px`,
@@ -726,6 +735,26 @@ export default function ChartComponent({
             className="w-full px-3 py-2 text-left text-sm text-slate-200 hover:bg-slate-700 transition-colors"
           >
             Add Take Profit
+          </button>
+          <div className="border-t border-slate-600 my-1"></div>
+          <button
+            onClick={() => handleAddLineFromContext('support')}
+            className="w-full px-3 py-2 text-left text-sm text-slate-200 hover:bg-slate-700 transition-colors"
+          >
+            Add Support Line
+          </button>
+          <button
+            onClick={() => handleAddLineFromContext('resistance')}
+            className="w-full px-3 py-2 text-left text-sm text-slate-200 hover:bg-slate-700 transition-colors"
+          >
+            Add Resistance Line
+          </button>
+          <div className="border-t border-slate-600 my-1"></div>
+          <button
+            onClick={handleClearAllLines}
+            className="w-full px-3 py-2 text-left text-sm text-red-400 hover:bg-slate-700 transition-colors"
+          >
+            Clear All Lines
           </button>
         </div>
       )}

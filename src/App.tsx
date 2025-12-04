@@ -3,7 +3,7 @@ import { TrendingUp, Settings, Plus, Trash2, RefreshCw } from 'lucide-react';
 import ChartComponent from './components/ChartComponent';
 import SettingsDialog from './components/SettingsDialog';
 import IndicatorBrowser from './components/IndicatorBrowser';
-import { useChartAPI } from './hooks/useChartAPI';
+import { ChartAPIProvider, useChartAPIContext } from './contexts/ChartAPIContext';
 import { useBarsData } from './hooks/useBarsData';
 import { AlpacaBarAdapter } from './adapters/alpaca';
 import { MockAdapter } from './adapters/mock';
@@ -1270,23 +1270,13 @@ export const EquityBaselineChart = () => {
   );
 };
 
-function App() {
+function AppContent() {
   const [selectedIndicator, setSelectedIndicator] = useState<any>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isBrowserOpen, setIsBrowserOpen] = useState(false);
   const [selectedBar, setSelectedBar] = useState<OHLCVBar | null>(null);
   const [symbol, setSymbol] = useState('AAPL');
   const [timeframe, setTimeframe] = useState('5Min');
-
-  const persistenceAdapter = useMemo(() => {
-    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-    const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-
-    if (supabaseUrl && supabaseKey) {
-      return createPersistenceAdapter('supabase', { supabaseUrl, supabaseKey });
-    }
-    return createPersistenceAdapter('localStorage');
-  }, []);
 
   const dataAdapter = useMemo(() => {
     if (USE_ALPACA) {
@@ -1306,12 +1296,15 @@ function App() {
     addEntryLine,
     addStopLoss,
     addTakeProfit,
+    addSupportLine,
+    addResistanceLine,
     removeLine,
+    clearAllLines,
     addLineByType,
     addIndicator,
     removeIndicator,
     updateIndicatorSettings,
-  } = useChartAPI({ persistenceAdapter });
+  } = useChartAPIContext();
 
   const {
     bars,
@@ -1444,6 +1437,7 @@ function App() {
             lines={lines}
             onDeleteLine={removeLine}
             onAddLine={addLineByType}
+            onClearAllLines={clearAllLines}
             enableBarSelection={true}
             onBarClick={handleBarClick}
             />
@@ -1582,6 +1576,24 @@ function App() {
         onAddIndicator={handleAddIndicator}
       />
     </div>
+  );
+}
+
+function App() {
+  const persistenceAdapter = useMemo(() => {
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+    const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+    if (supabaseUrl && supabaseKey) {
+      return createPersistenceAdapter('supabase', { supabaseUrl, supabaseKey });
+    }
+    return createPersistenceAdapter('localStorage');
+  }, []);
+
+  return (
+    <ChartAPIProvider persistenceAdapter={persistenceAdapter}>
+      <AppContent />
+    </ChartAPIProvider>
   );
 }
 
