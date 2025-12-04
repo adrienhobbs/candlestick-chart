@@ -697,7 +697,7 @@ export default function ChartComponent({
             onClick={() => handleDeleteLine(line.id)}
             className="absolute bg-red-500 hover:bg-red-600/50 text-white rounded-full w-4 h-4 flex items-center justify-center text-xs font-bold transition-colors z-20"
             style={{
-              right: '0px',
+              left: '0px',
               top: `${y - 10}px`,
             }}
             title="Delete line"
