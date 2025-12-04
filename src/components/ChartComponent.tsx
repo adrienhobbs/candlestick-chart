@@ -97,7 +97,7 @@ export default function ChartComponent({
         borderColor: '#334155',
       },
       crosshair: {
-        mode: 1,
+        mode: 0,
         vertLine: {
           width: 1,
           color: '#475569',
