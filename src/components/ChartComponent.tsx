@@ -698,7 +698,7 @@ export default function ChartComponent({
             className="absolute bg-red-500/50 hover:bg-red-600 text-white rounded-full w-3 h-3 flex items-center justify-center text-xs font-bold transition-colors z-20"
             style={{
               right: '54px',
-              top: `${y - 29}px`,
+              top: `${y - 20}px`,
             }}
             title="Delete line"
           >
