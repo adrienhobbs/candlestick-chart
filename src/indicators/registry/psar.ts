@@ -55,11 +55,9 @@ export const PSARIndicator: IndicatorDefinition = {
       max: settings.max,
     });
 
-    return bars
-      .map((bar, i) => ({
-        time: bar.timestamp / 1000,
-        value: psarValues[i] ?? NaN,
-      }))
-      .filter((point) => !isNaN(point.value));
+    return bars.map((bar, i) => ({
+      time: bar.timestamp / 1000,
+      value: psarValues[i] ?? NaN,
+    }));
   },
 };

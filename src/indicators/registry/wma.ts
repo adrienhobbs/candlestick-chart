@@ -52,11 +52,9 @@ export const WMAIndicator: IndicatorDefinition = {
       period: settings.period,
     });
 
-    return bars
-      .map((bar, i) => ({
-        time: bar.timestamp / 1000,
-        value: wmaValues[i] ?? NaN,
-      }))
-      .filter((point) => !isNaN(point.value));
+    return bars.map((bar, i) => ({
+      time: bar.timestamp / 1000,
+      value: wmaValues[i] ?? NaN,
+    }));
   },
 };

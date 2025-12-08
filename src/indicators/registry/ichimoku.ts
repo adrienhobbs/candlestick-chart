@@ -4,6 +4,7 @@ import {
   ChartSeriesType,
 } from '../core/types';
 import { ichimokucloud } from 'fast-technical-indicators';
+import { displaceArray } from '../utils/calculations';
 
 export const IchimokuIndicator: IndicatorDefinition = {
   metadata: {
@@ -116,17 +117,23 @@ export const IchimokuIndicator: IndicatorDefinition = {
       conversionPeriod: settings.conversionPeriod,
       basePeriod: settings.basePeriod,
       spanPeriod: settings.spanPeriod,
-      displacement: settings.displacement,
+      displacement: 0,
     });
 
-    return bars
-      .map((bar, i) => ({
-        time: bar.timestamp / 1000,
-        value: ichimokuValues[i]?.conversion ?? NaN,
-        base: ichimokuValues[i]?.base ?? NaN,
-        spanA: ichimokuValues[i]?.spanA ?? NaN,
-        spanB: ichimokuValues[i]?.spanB ?? NaN,
-      }))
-      .filter((point) => !isNaN(point.value));
+    const conversion = bars.map((_, i) => ichimokuValues[i]?.conversion ?? NaN);
+    const base = bars.map((_, i) => ichimokuValues[i]?.base ?? NaN);
+    const spanA = bars.map((_, i) => ichimokuValues[i]?.spanA ?? NaN);
+    const spanB = bars.map((_, i) => ichimokuValues[i]?.spanB ?? NaN);
+
+    const displacedSpanA = displaceArray(spanA, settings.displacement);
+    const displacedSpanB = displaceArray(spanB, settings.displacement);
+
+    return bars.map((bar, i) => ({
+      time: bar.timestamp / 1000,
+      value: conversion[i],
+      base: base[i],
+      spanA: displacedSpanA[i],
+      spanB: displacedSpanB[i],
+    }));
   },
 };

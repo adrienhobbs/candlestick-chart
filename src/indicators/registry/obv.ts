@@ -41,11 +41,9 @@ export const OBVIndicator: IndicatorDefinition = {
 
     const obvValues = obv({ close, volume });
 
-    return bars
-      .map((bar, i) => ({
-        time: bar.timestamp / 1000,
-        value: obvValues[i] ?? NaN,
-      }))
-      .filter((point) => !isNaN(point.value));
+    return bars.map((bar, i) => ({
+      time: bar.timestamp / 1000,
+      value: obvValues[i] ?? NaN,
+    }));
   },
 };

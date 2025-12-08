@@ -46,11 +46,9 @@ export const SMAIndicator: IndicatorDefinition = {
   },
   calculate: (bars, settings) => {
     const smaValues = calculateSMA(bars, settings.period);
-    return bars
-      .map((bar, i) => ({
-        time: bar.timestamp / 1000,
-        value: smaValues[i],
-      }))
-      .filter((point) => !isNaN(point.value));
+    return bars.map((bar, i) => ({
+      time: bar.timestamp / 1000,
+      value: smaValues[i],
+    }));
   },
 };

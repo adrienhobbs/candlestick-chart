@@ -1,5 +1,16 @@
 import { OHLCVBar } from '../../types/chart';
 
+export function padIndicatorArray(result: number[], barsLength: number): number[] {
+  const missing = barsLength - result.length;
+  if (missing <= 0) return result;
+  return [...Array(missing).fill(NaN), ...result];
+}
+
+export function displaceArray(arr: number[], offset: number): number[] {
+  if (offset <= 0) return arr;
+  return [...arr.slice(offset), ...Array(offset).fill(NaN)];
+}
+
 export function calculateSMA(bars: OHLCVBar[], period: number): number[] {
   const result: number[] = [];
 

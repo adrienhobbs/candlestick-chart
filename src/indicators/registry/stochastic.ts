@@ -72,12 +72,10 @@ export const StochasticIndicator: IndicatorDefinition = {
       signalPeriod: settings.signalPeriod,
     });
 
-    return bars
-      .map((bar, i) => ({
-        time: bar.timestamp / 1000,
-        value: stochValues[i]?.k ?? NaN,
-        signal: stochValues[i]?.d ?? NaN,
-      }))
-      .filter((point) => !isNaN(point.value));
+    return bars.map((bar, i) => ({
+      time: bar.timestamp / 1000,
+      value: stochValues[i]?.k ?? NaN,
+      signal: stochValues[i]?.d ?? NaN,
+    }));
   },
 };

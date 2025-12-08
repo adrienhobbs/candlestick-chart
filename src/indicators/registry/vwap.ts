@@ -188,13 +188,11 @@ export const VWAPIndicator: IndicatorDefinition = {
       includeBands: settings.showBands,
     });
 
-    return bars
-      .map((bar, i) => ({
-        time: bar.timestamp / 1000,
-        value: vwap[i],
-        upper: upper[i],
-        lower: lower[i],
-      }))
-      .filter((point) => !isNaN(point.value));
+    return bars.map((bar, i) => ({
+      time: bar.timestamp / 1000,
+      value: vwap[i],
+      upper: upper[i],
+      lower: lower[i],
+    }));
   },
 };

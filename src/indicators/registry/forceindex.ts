@@ -54,11 +54,9 @@ export const ForceIndexIndicator: IndicatorDefinition = {
       period: settings.period,
     });
 
-    return bars
-      .map((bar, i) => ({
-        time: bar.timestamp / 1000,
-        value: forceValues[i] ?? NaN,
-      }))
-      .filter((point) => !isNaN(point.value));
+    return bars.map((bar, i) => ({
+      time: bar.timestamp / 1000,
+      value: forceValues[i] ?? NaN,
+    }));
   },
 };

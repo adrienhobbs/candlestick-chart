@@ -86,13 +86,11 @@ export const MACDIndicator: IndicatorDefinition = {
       SimpleMASignal: false,
     });
 
-    return bars
-      .map((bar, i) => ({
-        time: bar.timestamp / 1000,
-        value: macdValues[i]?.MACD ?? NaN,
-        signal: macdValues[i]?.signal ?? NaN,
-        histogram: macdValues[i]?.histogram ?? NaN,
-      }))
-      .filter((point) => !isNaN(point.value));
+    return bars.map((bar, i) => ({
+      time: bar.timestamp / 1000,
+      value: macdValues[i]?.MACD ?? NaN,
+      signal: macdValues[i]?.signal ?? NaN,
+      histogram: macdValues[i]?.histogram ?? NaN,
+    }));
   },
 };

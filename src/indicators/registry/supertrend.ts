@@ -66,11 +66,9 @@ export const SuperTrendIndicator: IndicatorDefinition = {
       multiplier: settings.multiplier,
     });
 
-    return bars
-      .map((bar, i) => ({
-        time: bar.timestamp / 1000,
-        value: supertrendValues[i]?.supertrend ?? NaN,
-      }))
-      .filter((point) => !isNaN(point.value));
+    return bars.map((bar, i) => ({
+      time: bar.timestamp / 1000,
+      value: supertrendValues[i]?.supertrend ?? NaN,
+    }));
   },
 };

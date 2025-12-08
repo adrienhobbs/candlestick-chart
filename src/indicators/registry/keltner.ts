@@ -101,13 +101,11 @@ export const KeltnerChannelsIndicator: IndicatorDefinition = {
       multiplier: settings.atrMultiplier,
     });
 
-    return bars
-      .map((bar, i) => ({
-        time: bar.timestamp / 1000,
-        value: keltnerValues[i]?.middle ?? NaN,
-        upper: keltnerValues[i]?.upper ?? NaN,
-        lower: keltnerValues[i]?.lower ?? NaN,
-      }))
-      .filter((point) => !isNaN(point.value));
+    return bars.map((bar, i) => ({
+      time: bar.timestamp / 1000,
+      value: keltnerValues[i]?.middle ?? NaN,
+      upper: keltnerValues[i]?.upper ?? NaN,
+      lower: keltnerValues[i]?.lower ?? NaN,
+    }));
   },
 };

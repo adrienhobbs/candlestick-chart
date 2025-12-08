@@ -83,13 +83,11 @@ export const DonchianChannelsIndicator: IndicatorDefinition = {
       period: settings.period,
     });
 
-    return bars
-      .map((bar, i) => ({
-        time: bar.timestamp / 1000,
-        value: donchianValues[i]?.middle ?? NaN,
-        upper: donchianValues[i]?.upper ?? NaN,
-        lower: donchianValues[i]?.lower ?? NaN,
-      }))
-      .filter((point) => !isNaN(point.value));
+    return bars.map((bar, i) => ({
+      time: bar.timestamp / 1000,
+      value: donchianValues[i]?.middle ?? NaN,
+      upper: donchianValues[i]?.upper ?? NaN,
+      lower: donchianValues[i]?.lower ?? NaN,
+    }));
   },
 };

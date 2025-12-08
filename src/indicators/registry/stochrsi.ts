@@ -88,12 +88,10 @@ export const StochRSIIndicator: IndicatorDefinition = {
       dPeriod: settings.dPeriod,
     });
 
-    return bars
-      .map((bar, i) => ({
-        time: bar.timestamp / 1000,
-        value: stochRSIValues[i]?.k ?? NaN,
-        signal: stochRSIValues[i]?.d ?? NaN,
-      }))
-      .filter((point) => !isNaN(point.value));
+    return bars.map((bar, i) => ({
+      time: bar.timestamp / 1000,
+      value: stochRSIValues[i]?.k ?? NaN,
+      signal: stochRSIValues[i]?.d ?? NaN,
+    }));
   },
 };

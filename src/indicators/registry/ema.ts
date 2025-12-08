@@ -46,11 +46,9 @@ export const EMAIndicator: IndicatorDefinition = {
   },
   calculate: (bars, settings) => {
     const emaValues = calculateEMA(bars, settings.period);
-    return bars
-      .map((bar, i) => ({
-        time: bar.timestamp / 1000,
-        value: emaValues[i],
-      }))
-      .filter((point) => !isNaN(point.value));
+    return bars.map((bar, i) => ({
+      time: bar.timestamp / 1000,
+      value: emaValues[i],
+    }));
   },
 };
