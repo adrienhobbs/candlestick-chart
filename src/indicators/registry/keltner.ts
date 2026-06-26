@@ -99,7 +99,7 @@ export const KeltnerChannelsIndicator: IndicatorDefinition = {
       period: settings.period,
       atrPeriod: settings.atrPeriod,
       multiplier: settings.atrMultiplier,
-    });
+    } as any);
 
     return bars.map((bar, i) => ({
       time: bar.timestamp / 1000,

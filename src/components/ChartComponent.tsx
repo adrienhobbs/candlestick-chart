@@ -10,6 +10,8 @@ import {
   HistogramData,
   IPriceLine,
   LineStyle,
+  LineWidth,
+  ColorType,
   CandlestickSeries,
   HistogramSeries,
   LineSeries,
@@ -76,7 +78,7 @@ export default function ChartComponent({
 
     const chart = createChart(chartContainerRef.current, {
       layout: {
-        background: { type: 'solid', color: '#0f172a' },
+        background: { type: ColorType.Solid, color: '#0f172a' },
         textColor: '#94a3b8',
         panes: {
           enableResize: true,
@@ -274,7 +276,7 @@ export default function ChartComponent({
           console.log('Selecting new bar');
           selectedBarRef.current = clickedBar;
           setSelectedBar(clickedBar);
-          const barX = timeScale.timeToCoordinate(clickedBar.timestamp / 1000);
+          const barX = timeScale.timeToCoordinate((clickedBar.timestamp / 1000) as Time);
           console.log('Bar X position:', barX);
           if (barX !== null) {
             const barWidth = Math.max(8, rect.width / barsRef.current.length);
@@ -405,7 +407,7 @@ export default function ChartComponent({
       const priceLine = candlestickSeriesRef.current?.createPriceLine({
         price: line.price,
         color: line.color,
-        lineWidth: line.lineWidth || 2,
+        lineWidth: (line.lineWidth || 2) as LineWidth,
         lineStyle: getLineStyle(line.lineStyle),
         axisLabelVisible: true,
         title: line.title || '',
@@ -622,7 +624,7 @@ export default function ChartComponent({
       if (!chartRef.current || !selectedBar || !chartContainerRef.current) return;
 
       const timeScale = chartRef.current.timeScale();
-      const barX = timeScale.timeToCoordinate(selectedBar.timestamp / 1000);
+      const barX = timeScale.timeToCoordinate((selectedBar.timestamp / 1000) as Time);
 
       if (barX !== null) {
         const rect = chartContainerRef.current.getBoundingClientRect();
