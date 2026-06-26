@@ -1581,12 +1581,6 @@ function AppContent() {
 
 function App() {
   const persistenceAdapter = useMemo(() => {
-    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-    const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-
-    if (supabaseUrl && supabaseKey) {
-      return createPersistenceAdapter('supabase', { supabaseUrl, supabaseKey });
-    }
     return createPersistenceAdapter('localStorage');
   }, []);
 
