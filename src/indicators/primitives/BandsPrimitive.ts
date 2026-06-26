@@ -140,7 +140,7 @@ export class BandsPrimitive implements ISeriesPrimitive<Time> {
 
   attached(param: SeriesAttachedParameter<Time>): void {
     this._chart = param.chart;
-    this._series = param.series;
+    this._series = param.series as ISeriesApi<'Line'>;
   }
 
   detached(): void {
