@@ -685,27 +685,27 @@ export default function ChartComponent({
             }}
           />
         )}
+
+        {lines.map((line) => {
+          const y = linePositions.get(line.id);
+          if (y === null || y === undefined) return null;
+
+          return (
+            <button
+              key={line.id}
+              onClick={() => handleDeleteLine(line.id)}
+              className="absolute bg-red-500/70 hover:bg-red-500 text-white rounded-full w-4 h-4 flex items-center justify-center text-xs font-bold transition-colors z-20 shadow-md"
+              style={{
+                right: '68px',
+                top: `${y - 8}px`,
+              }}
+              title="Delete line"
+            >
+              ×
+            </button>
+          );
+        })}
       </div>
-
-      {lines.map((line) => {
-        const y = linePositions.get(line.id);
-        if (y === null || y === undefined) return null;
-
-        return (
-          <button
-            key={line.id}
-            onClick={() => handleDeleteLine(line.id)}
-            className="absolute bg-red-500/50 hover:bg-red-600 text-white rounded-full w-3 h-3 flex items-center justify-center text-xs font-bold transition-colors z-20"
-            style={{
-              left: '2px',
-              top: `${y - 22}px`,
-            }}
-            title="Delete line"
-          >
-            ×
-          </button>
-        );
-      })}
 
       {contextMenu && (
         <div
