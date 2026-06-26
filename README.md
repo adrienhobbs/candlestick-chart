@@ -21,7 +21,29 @@ A powerful, provider-agnostic trading chart built on TradingView's Lightweight C
 - Error handling and retry logic
 - Easy to create custom adapters for other providers
 
+## Install (as a package)
+
+```bash
+npm install @adrienhobbs/candlekit lightweight-charts react react-dom
+```
+
+`react`, `react-dom`, and `lightweight-charts` are peer dependencies — install them
+alongside the package.
+
+```tsx
+import { ChartComponent } from '@adrienhobbs/candlekit';
+import '@adrienhobbs/candlekit/styles.css';
+
+<ChartComponent bars={bars} />
+```
+
+Indicator overlays persist via localStorage by default
+(`createPersistenceAdapter('localStorage')`), or pass `'noop'` to disable.
+
 ## Quick Start
+
+> The sections below describe the **dev harness** (`npm run dev`) bundled in this repo,
+> not the published package.
 
 ### Option 1: With Mock Data (No Setup Required)
 

@@ -6,7 +6,7 @@
   "author": "adrienhobbs",
   "repository": {
     "type": "git",
-    "url": "https://github.com/adrienhobbs/candlestick-chart"
+    "url": "git+https://github.com/adrienhobbs/candlestick-chart.git"
   },
   "keywords": [
     "trading",
