@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   createChart,
   createSeriesMarkers,
@@ -61,7 +62,7 @@ export default function ChartComponent({
   const seriesMarkersRef = useRef<any>(null);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; price: number } | null>(null);
-  const [linePositions, setLinePositions] = useState<Map<string, number>>(new Map());
+  const [linePositions, setLinePositions] = useState<Map<string, { top: number; right: number }>>(new Map());
   const [selectedBar, setSelectedBar] = useState<OHLCVBar | null>(null);
   const selectedBarRef = useRef<OHLCVBar | null>(null);
   const [spotlightPosition, setSpotlightPosition] = useState<{ x: number; width: number } | null>(null);
@@ -75,6 +76,8 @@ export default function ChartComponent({
 
   useEffect(() => {
     if (!chartContainerRef.current) return;
+
+    chartContainerRef.current.style.position = 'relative';
 
     const chart = createChart(chartContainerRef.current, {
       layout: {
@@ -401,8 +404,6 @@ export default function ChartComponent({
     });
     priceLineRefs.current.clear();
 
-    const newPositions = new Map<string, number>();
-
     lines.forEach((line) => {
       const priceLine = candlestickSeriesRef.current?.createPriceLine({
         price: line.price,
@@ -416,34 +417,52 @@ export default function ChartComponent({
       if (priceLine) {
         priceLineRefs.current.set(line.id, priceLine);
       }
-
-      const y = candlestickSeriesRef.current?.priceToCoordinate(line.price);
-      if (y !== null && y !== undefined) {
-        newPositions.set(line.id, y);
-      }
     });
 
-    setLinePositions(newPositions);
+    requestAnimationFrame(() => {
+      if (!candlestickSeriesRef.current || !chartContainerRef.current) return;
+      const rect = chartContainerRef.current.getBoundingClientRect();
+      const newPositions = new Map<string, { top: number; right: number }>();
+      lines.forEach((line) => {
+        const y = candlestickSeriesRef.current?.priceToCoordinate(line.price);
+        if (y !== null && y !== undefined) {
+          newPositions.set(line.id, {
+            top: rect.top + y,
+            right: window.innerWidth - rect.right + 68,
+          });
+        }
+      });
+      setLinePositions(newPositions);
+    });
   }, [lines]);
 
   useEffect(() => {
     if (!chartRef.current || !candlestickSeriesRef.current) return;
 
     const updatePositions = () => {
-      const newPositions = new Map<string, number>();
+      if (!candlestickSeriesRef.current || !chartContainerRef.current) return;
+      const rect = chartContainerRef.current.getBoundingClientRect();
+      const newPositions = new Map<string, { top: number; right: number }>();
       lines.forEach((line) => {
         const y = candlestickSeriesRef.current?.priceToCoordinate(line.price);
         if (y !== null && y !== undefined) {
-          newPositions.set(line.id, y);
+          newPositions.set(line.id, {
+            top: rect.top + y,
+            right: window.innerWidth - rect.right + 68,
+          });
         }
       });
       setLinePositions(newPositions);
     };
 
     chartRef.current.timeScale().subscribeVisibleLogicalRangeChange(updatePositions);
+    window.addEventListener('scroll', updatePositions, { passive: true });
+    window.addEventListener('resize', updatePositions);
 
     return () => {
       chartRef.current?.timeScale().unsubscribeVisibleLogicalRangeChange(updatePositions);
+      window.removeEventListener('scroll', updatePositions);
+      window.removeEventListener('resize', updatePositions);
     };
   }, [lines]);
 
@@ -687,27 +706,30 @@ export default function ChartComponent({
             }}
           />
         )}
-
-        {lines.map((line) => {
-          const y = linePositions.get(line.id);
-          if (y === null || y === undefined) return null;
-
-          return (
-            <button
-              key={line.id}
-              onClick={() => handleDeleteLine(line.id)}
-              className="absolute bg-red-500/70 hover:bg-red-500 text-white rounded-full w-4 h-4 flex items-center justify-center text-xs font-bold transition-colors z-20 shadow-md"
-              style={{
-                right: '68px',
-                top: `${y - 8}px`,
-              }}
-              title="Delete line"
-            >
-              ×
-            </button>
-          );
-        })}
       </div>
+
+      {chartContainerRef.current && lines.map((line) => {
+        const pos = linePositions.get(line.id);
+        if (!pos) return null;
+
+        return createPortal(
+          <button
+            key={line.id}
+            onClick={() => handleDeleteLine(line.id)}
+            className="bg-red-500/70 hover:bg-red-500 text-white rounded-full w-4 h-4 flex items-center justify-center text-xs font-bold transition-colors shadow-md"
+            style={{
+              position: 'fixed',
+              top: `${pos.top - 8}px`,
+              right: `${pos.right}px`,
+              zIndex: 9999,
+            }}
+            title="Delete line"
+          >
+            ×
+          </button>,
+          document.body
+        );
+      })}
 
       {contextMenu && (
         <div
