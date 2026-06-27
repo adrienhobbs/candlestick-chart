@@ -151,11 +151,9 @@ export default function ChartComponent({
 
     chart.timeScale().subscribeVisibleLogicalRangeChange((logicalRange) => {
       if (logicalRange && logicalRange.from < 5 && !isLoadingRef.current && onLoadMoreData) {
-        console.log('Triggering load more, logicalRange.from:', logicalRange.from);
         isLoadingRef.current = true;
         setIsLoadingMore(true);
         previousBarsLengthRef.current = barsRef.current.length;
-        console.log('Set previousBarsLengthRef to:', previousBarsLengthRef.current);
         const sortedBars = [...barsRef.current].sort((a, b) => a.timestamp - b.timestamp);
         const oldestTimestamp = sortedBars[0]?.timestamp;
         if (oldestTimestamp) {
@@ -171,21 +169,17 @@ export default function ChartComponent({
     };
 
     const handleContextMenu = (e: MouseEvent) => {
-      console.log('Context menu event triggered!', e);
       e.preventDefault();
       e.stopPropagation();
 
       if (!candlestickSeriesRef.current) {
-        console.log('No candlestick series yet');
         return;
       }
 
       const rect = chartContainerRef.current!.getBoundingClientRect();
       const y = e.clientY - rect.top;
-      console.log('Y position:', y, 'Rect:', rect);
 
       const price = candlestickSeriesRef.current.coordinateToPrice(y);
-      console.log('Calculated price:', price);
 
       if (price !== null) {
         setContextMenu({
@@ -193,7 +187,6 @@ export default function ChartComponent({
           y: y,
           price: price as number,
         });
-        console.log('Context menu set:', { x: e.clientX - rect.left, y, price });
       }
     };
 
@@ -217,67 +210,47 @@ export default function ChartComponent({
     };
 
     const handleClick = (e: MouseEvent) => {
-      console.log('=== CLICK DEBUG START ===');
-      console.log('Click event - closing context menu');
       setContextMenu(null);
 
       if (isDraggingRef.current) {
-        console.log('Ignoring click - user was dragging');
         isDraggingRef.current = false;
         return;
       }
 
-      console.log('enableBarSelection prop:', enableBarSelection);
-      console.log('chartRef.current:', !!chartRef.current);
-      console.log('candlestickSeriesRef.current:', !!candlestickSeriesRef.current);
-      console.log('bars.length:', bars.length);
 
       if (!enableBarSelection) {
-        console.log('Bar selection is DISABLED - exiting');
         return;
       }
 
       if (!chartRef.current) {
-        console.log('Chart ref is NULL - exiting');
         return;
       }
 
       if (!candlestickSeriesRef.current) {
-        console.log('Candlestick series ref is NULL - exiting');
         return;
       }
 
-      console.log('All checks passed - proceeding with bar selection');
 
       const rect = chartContainerRef.current!.getBoundingClientRect();
       const x = e.clientX - rect.left;
-      console.log('Click X coordinate:', x);
 
       const timeScale = chartRef.current.timeScale();
       const coordinate = timeScale.coordinateToTime(x);
-      console.log('Coordinate from timeScale:', coordinate);
 
       if (!coordinate) {
-        console.log('No coordinate from timeScale - exiting');
         return;
       }
 
       const clickedTime = coordinate as number;
-      console.log('Clicked time:', clickedTime);
-      console.log('Sample bar timestamps (first 3):', barsRef.current.slice(0, 3).map(b => b.timestamp / 1000));
 
       const clickedBar = barsRef.current.find(bar => {
         const diff = Math.abs((bar.timestamp / 1000) - clickedTime);
         return diff < 300;
       });
 
-      console.log('Clicked bar found:', !!clickedBar);
       if (clickedBar) {
-        console.log('Clicked bar details:', clickedBar);
-        console.log('Current selectedBarRef.current:', selectedBarRef.current);
 
         if (selectedBarRef.current && selectedBarRef.current.timestamp === clickedBar.timestamp) {
-          console.log('Deselecting bar (same bar clicked)');
           selectedBarRef.current = null;
           setSelectedBar(null);
           setSpotlightPosition(null);
@@ -285,14 +258,11 @@ export default function ChartComponent({
             onBarClick(null);
           }
         } else {
-          console.log('Selecting new bar');
           selectedBarRef.current = clickedBar;
           setSelectedBar(clickedBar);
           const barX = timeScale.timeToCoordinate((clickedBar.timestamp / 1000) as Time);
-          console.log('Bar X position:', barX);
           if (barX !== null) {
             const barWidth = Math.max(8, rect.width / barsRef.current.length);
-            console.log('Bar width:', barWidth);
             setSpotlightPosition({ x: barX - barWidth / 2, width: barWidth });
           }
           if (onBarClick) {
@@ -300,9 +270,7 @@ export default function ChartComponent({
           }
         }
       } else {
-        console.log('No bar found at clicked position');
       }
-      console.log('=== CLICK DEBUG END ===');
     };
 
     window.addEventListener('resize', handleResize);
@@ -342,7 +310,6 @@ export default function ChartComponent({
       return acc;
     }, [] as OHLCVBar[]);
 
-    console.log('Debug - bars.length:', bars.length, 'uniqueBars.length:', uniqueBars.length, 'isLoadingRef:', isLoadingRef.current, 'previousBarsLength:', previousBarsLengthRef.current);
 
     const previousBars = previousBarsRef.current;
     const isInitialLoad = previousBars.length === 0;
@@ -350,20 +317,13 @@ export default function ChartComponent({
     const lastBarChanged = uniqueBars.length > 0 && previousBars.length > 0 &&
       (uniqueBars[uniqueBars.length - 1].timestamp === previousBars[previousBars.length - 1].timestamp);
 
-    console.log('isInitialLoad:', isInitialLoad, 'hasNewBars:', hasNewBars, 'lastBarChanged:', lastBarChanged);
-    console.log('previousBars.length:', previousBars.length, 'uniqueBars.length:', uniqueBars.length);
 
     if (isLoadingRef.current && uniqueBars.length > previousBarsLengthRef.current) {
-      console.log('Hiding loading indicator');
       isLoadingRef.current = false;
       setIsLoadingMore(false);
     }
 
-    const firstBarChanged = uniqueBars.length > 0 && previousBars.length > 0 &&
-      (uniqueBars[0].timestamp !== previousBars[0].timestamp);
-
     if (isInitialLoad || hasNewBars) {
-      console.log('Setting data with', uniqueBars.length, 'bars', 'firstBarChanged:', firstBarChanged);
       const candleData: CandlestickData[] = uniqueBars.map((bar) => ({
         time: (bar.timestamp / 1000) as Time,
         open: bar.open,
@@ -378,8 +338,6 @@ export default function ChartComponent({
         color: bar.close >= bar.open ? '#10b98180' : '#ef444480',
       }));
 
-      console.log('candleData sample (first 3):', candleData.slice(0, 3));
-      console.log('candleData sample (last 3):', candleData.slice(-3));
       candlestickSeriesRef.current.setData(candleData);
       volumeSeriesRef.current.setData(volumeData);
     } else if (lastBarChanged && uniqueBars.length > 0 && !hasNewBars) {
@@ -437,7 +395,7 @@ export default function ChartComponent({
         if (y !== null && y !== undefined) {
           newPositions.set(line.id, {
             top: rect.top + y,
-            right: window.innerWidth - rect.right + 68,
+            right: window.innerWidth - rect.right + 68 + estimateLabelTitleWidth(line.title),
           });
         }
       });
@@ -457,7 +415,7 @@ export default function ChartComponent({
         if (y !== null && y !== undefined) {
           newPositions.set(line.id, {
             top: rect.top + y,
-            right: window.innerWidth - rect.right + 68,
+            right: window.innerWidth - rect.right + 68 + estimateLabelTitleWidth(line.title),
           });
         }
       });
@@ -671,11 +629,14 @@ export default function ChartComponent({
     }
 
     const updateTradePopupPos = () => {
-      if (!chartRef.current || !selectedTrade) return;
+      if (!chartRef.current || !selectedTrade || !chartContainerRef.current) return;
       const timeScale = chartRef.current.timeScale();
       const x = timeScale.timeToCoordinate((selectedTrade.entryTime / 1000) as Time);
-      // off-screen (bar scrolled out of view) → timeToCoordinate returns null → hide
-      setTradePopupPos(x !== null ? { x } : null);
+      // Hide when the bar is off-screen: timeToCoordinate returns null once it leaves the
+      // logical range, but a bar just past the edge returns an out-of-bounds coordinate —
+      // bound to [0, width] so the popup never peeks regardless of container overflow.
+      const width = chartContainerRef.current.getBoundingClientRect().width;
+      setTradePopupPos(x !== null && x >= 0 && x <= width ? { x } : null);
     };
 
     updateTradePopupPos();
@@ -817,6 +778,16 @@ export default function ChartComponent({
       )}
     </div>
   );
+}
+
+// A price line with a `title` renders a title box to the LEFT of its on-axis
+// price value, overhanging into the plot. The floating delete button is placed
+// just left of the value box, so without this allowance it lands on top of the
+// title text. Reserve an approximate title-box width (canvas labels can't be
+// measured) so the button clears the label.
+function estimateLabelTitleWidth(title?: string): number {
+  if (!title) return 0;
+  return title.length * 7 + 12;
 }
 
 function getLineStyle(style?: 'solid' | 'dashed' | 'dotted'): LineStyle {
