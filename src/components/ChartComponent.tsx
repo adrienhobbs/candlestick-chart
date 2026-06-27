@@ -125,6 +125,12 @@ export default function ChartComponent({
         vertLines: { color: '#1e293b' },
         horzLines: { color: '#1e293b' },
       },
+      // Render axis ticks + crosshair in the viewer's LOCAL timezone (lightweight-
+      // charts otherwise renders numeric times as UTC, which mismatches any
+      // local-time table/labels alongside the chart).
+      localization: {
+        timeFormatter: localCrosshairTimeFormatter,
+      },
       width: chartContainerRef.current.clientWidth,
       // Auto-fill the container's height unless an explicit `height` is given.
       // Fall back to 600 only when the container hasn't been laid out yet (a
@@ -134,6 +140,7 @@ export default function ChartComponent({
         timeVisible: true,
         secondsVisible: true,
         borderColor: '#334155',
+        tickMarkFormatter: localTickMarkFormatter,
       },
       rightPriceScale: {
         borderColor: '#334155',
@@ -901,4 +908,35 @@ function getLineStyle(style?: 'solid' | 'dashed' | 'dotted'): LineStyle {
     default:
       return LineStyle.Solid;
   }
+}
+
+const pad2 = (n: number): string => String(n).padStart(2, '0');
+
+// Axis tick labels in the viewer's LOCAL timezone. `tickMarkType`: 0=Year,
+// 1=Month, 2=DayOfMonth, 3=Time, 4=TimeWithSeconds.
+function localTickMarkFormatter(time: Time, tickMarkType: number): string {
+  const d = new Date((time as number) * 1000);
+  switch (tickMarkType) {
+    case 0:
+      return String(d.getFullYear());
+    case 1:
+      return d.toLocaleString(undefined, { month: 'short' });
+    case 2:
+      return d.toLocaleString(undefined, { month: 'short', day: 'numeric' });
+    case 4:
+      return `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
+    default:
+      return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+  }
+}
+
+// Crosshair time label in the viewer's LOCAL timezone (matches a local-time table).
+function localCrosshairTimeFormatter(time: Time): string {
+  return new Date((time as number) * 1000).toLocaleString(undefined, {
+    month: 'short',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  });
 }
