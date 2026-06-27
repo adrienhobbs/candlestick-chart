@@ -19,7 +19,7 @@ import {
   AreaSeries,
   SeriesMarker,
 } from 'lightweight-charts';
-import { OHLCVBar, ChartLine, ChartTrade } from '../types/chart';
+import { OHLCVBar, ChartLine, ChartTrade, PriceBand } from '../types/chart';
 import { IndicatorInstance } from '../indicators/core/types';
 import { indicatorRegistry } from '../indicators/core/registry';
 import { indicatorCalculator } from '../indicators/core/calculator';
@@ -57,6 +57,8 @@ interface ChartComponentProps {
    * labels. Omit to use the viewer's local timezone.
    */
   timeZone?: string;
+  /** Shaded horizontal price bands (e.g. an MFE↔MAE excursion zone). */
+  priceBands?: PriceBand[];
 }
 
 export default function ChartComponent({
@@ -77,6 +79,7 @@ export default function ChartComponent({
   height,
   focusTradeId = null,
   timeZone,
+  priceBands = [],
 }: ChartComponentProps) {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
@@ -90,6 +93,8 @@ export default function ChartComponent({
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; price: number } | null>(null);
   const [linePositions, setLinePositions] = useState<Map<string, { top: number; right: number }>>(new Map());
+  // Shaded price-band rects (container-relative px), recomputed as the price scale moves.
+  const [bandRects, setBandRects] = useState<Array<{ id: string; top: number; height: number; color: string }>>([]);
   const [selectedBar, setSelectedBar] = useState<OHLCVBar | null>(null);
   const selectedBarRef = useRef<OHLCVBar | null>(null);
   const [spotlightPosition, setSpotlightPosition] = useState<{ x: number; width: number } | null>(null);
@@ -548,6 +553,39 @@ export default function ChartComponent({
     };
   }, [lines]);
 
+  // Shaded price bands: project top/bottom prices to container-relative px and
+  // keep them in sync as the price scale auto-rescales (scroll/zoom/resize).
+  useEffect(() => {
+    const series = candlestickSeriesRef.current;
+    if (!chartRef.current || !series) return;
+    if (priceBands.length === 0) {
+      setBandRects([]);
+      return;
+    }
+    const recompute = () => {
+      if (!candlestickSeriesRef.current) return;
+      const rects: Array<{ id: string; top: number; height: number; color: string }> = [];
+      for (const band of priceBands) {
+        const yTop = candlestickSeriesRef.current.priceToCoordinate(band.top);
+        const yBottom = candlestickSeriesRef.current.priceToCoordinate(band.bottom);
+        if (yTop == null || yBottom == null) continue;
+        const top = Math.min(yTop, yBottom);
+        const height = Math.abs(yBottom - yTop);
+        rects.push({ id: band.id, top, height, color: band.color });
+      }
+      setBandRects(rects);
+    };
+    const raf = requestAnimationFrame(recompute);
+    const timeScale = chartRef.current.timeScale();
+    timeScale.subscribeVisibleLogicalRangeChange(recompute);
+    window.addEventListener('resize', recompute);
+    return () => {
+      cancelAnimationFrame(raf);
+      chartRef.current?.timeScale().unsubscribeVisibleLogicalRangeChange(recompute);
+      window.removeEventListener('resize', recompute);
+    };
+  }, [priceBands]);
+
   useEffect(() => {
     if (!chartRef.current) return;
 
@@ -793,6 +831,14 @@ export default function ChartComponent({
       )}
       <div className="relative">
         <div ref={chartContainerRef} className="w-full" />
+
+        {bandRects.map((b) => (
+          <div
+            key={b.id}
+            className="absolute left-0 right-0 pointer-events-none z-4"
+            style={{ top: `${b.top}px`, height: `${b.height}px`, background: b.color }}
+          />
+        ))}
 
         {enableBarSelection && spotlightPosition && (
           <div

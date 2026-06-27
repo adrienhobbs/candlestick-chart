@@ -19,6 +19,17 @@ export interface ChartLine {
   type?: 'entry' | 'stopLoss' | 'takeProfit' | 'mfe' | 'mae';
 }
 
+/** A shaded horizontal price band (e.g. an MFE↔MAE excursion zone). */
+export interface PriceBand {
+  id: string;
+  /** Upper price bound of the band. */
+  top: number;
+  /** Lower price bound of the band. */
+  bottom: number;
+  /** CSS color (use an rgba/low-opacity fill so candles show through). */
+  color: string;
+}
+
 export interface ChartTrade {
   id: string;
   entryTime: number;   // ms timestamp — must equal an entry bar's timestamp
