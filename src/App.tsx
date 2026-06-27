@@ -7,7 +7,7 @@ import { ChartAPIProvider, useChartAPIContext } from './contexts/ChartAPIContext
 import { useBarsData } from './hooks/useBarsData';
 import { AlpacaBarAdapter } from './adapters/alpaca';
 import { MockAdapter } from './adapters/mock';
-import { OHLCVBar } from './types/chart';
+import { OHLCVBar, ChartTrade, ChartLine } from './types/chart';
 import { registerBuiltInIndicators } from './indicators/registry';
 import { createPersistenceAdapter } from './indicators/core/persistence';
 
@@ -1275,6 +1275,7 @@ function AppContent() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isBrowserOpen, setIsBrowserOpen] = useState(false);
   const [selectedBar, setSelectedBar] = useState<OHLCVBar | null>(null);
+  const [selectedTradeId, setSelectedTradeId] = useState<string | null>(null);
   const [symbol, setSymbol] = useState('AAPL');
   const [timeframe, setTimeframe] = useState('5Min');
 
@@ -1341,8 +1342,59 @@ function AppContent() {
     setSelectedIndicator(null);
   };
 
+  // --- Trade overlay demo ----------------------------------------------------
+  // Derive demo trades FROM loaded bars so entry/exit timestamps exactly match
+  // real bar timestamps (MockAdapter uses dynamic Date.now()-based spacing).
+  const demoTrades = useMemo<ChartTrade[]>(() => {
+    if (bars.length < 60) return [];
+    const mk = (
+      id: string,
+      ei: number,
+      xi: number,
+      outcome: 'win' | 'loss'
+    ): ChartTrade => ({
+      id,
+      entryTime: bars[ei].timestamp,
+      exitTime: bars[xi].timestamp,
+      entryPrice: bars[ei].close,
+      exitPrice: bars[xi].close,
+      outcome,
+    });
+    // Spread the demo trades across the full loaded range so every marker is
+    // visible at the default fit (indices derived from bars.length).
+    const n = bars.length;
+    const at = (frac: number) => Math.min(n - 1, Math.max(0, Math.round(frac * n)));
+    return [
+      mk('t1', at(0.06), at(0.12), 'win'),
+      mk('t2', at(0.24), at(0.30), 'loss'),
+      mk('t3', at(0.44), at(0.52), 'win'),
+      mk('t4', at(0.64), at(0.70), 'loss'),
+      mk('t5', at(0.82), at(0.90), 'win'),
+    ];
+  }, [bars]);
+
+  // Synthetic overlay lines (stop/target/MFE/MAE) anchored to the selected trade.
+  const tradeLines = useMemo<ChartLine[]>(() => {
+    const trade = demoTrades.find((t) => t.id === selectedTradeId);
+    if (!trade) return [];
+    const entry = trade.entryPrice;
+    const hi = Math.max(trade.entryPrice, trade.exitPrice);
+    const lo = Math.min(trade.entryPrice, trade.exitPrice);
+    return [
+      { id: 'trade-entry', price: entry, color: '#3b82f6', lineStyle: 'solid', title: 'Entry', type: 'entry' },
+      { id: 'trade-stop', price: entry * 0.985, color: '#ef4444', lineStyle: 'dashed', title: 'Stop', type: 'stopLoss' },
+      { id: 'trade-target', price: entry * 1.03, color: '#22c55e', lineStyle: 'dashed', title: 'Target', type: 'takeProfit' },
+      { id: 'trade-mfe', price: hi * 1.005, color: '#2dd4bf', lineStyle: 'dotted', title: 'MFE', type: 'mfe' },
+      { id: 'trade-mae', price: lo * 0.995, color: '#f59e0b', lineStyle: 'dotted', title: 'MAE', type: 'mae' },
+    ];
+  }, [selectedTradeId, demoTrades]);
+
   const handleBarClick = (bar: OHLCVBar | null) => {
     setSelectedBar(bar);
+    const selected = bar
+      ? demoTrades.find((t) => t.entryTime === bar.timestamp || t.exitTime === bar.timestamp)
+      : null;
+    setSelectedTradeId(selected ? selected.id : null);
     if (bar) {
       console.log('Selected bar:', {
         timestamp: new Date(bar.timestamp).toLocaleString(),
@@ -1434,12 +1486,39 @@ function AppContent() {
               bars={displayBars}
             onLoadMoreData={handleLoadMoreData}
             indicators={indicators}
-            lines={lines}
+            lines={[...lines, ...tradeLines]}
             onDeleteLine={removeLine}
             onAddLine={addLineByType}
             onClearAllLines={clearAllLines}
             enableBarSelection={true}
             onBarClick={handleBarClick}
+            trades={demoTrades}
+            selectedTradeId={selectedTradeId}
+            renderTradePopup={(t) => {
+              const stop = t.entryPrice * 0.985;
+              const risk = t.entryPrice - stop;
+              const r = risk !== 0 ? (t.exitPrice - t.entryPrice) / risk : 0;
+              const isWin = t.outcome === 'win';
+              return (
+                <div className="bg-slate-800 border border-slate-600 rounded px-3 py-2 text-xs text-slate-200 shadow-lg">
+                  <div className="flex items-center justify-between gap-3 mb-1">
+                    <span className="font-bold uppercase tracking-wide">{t.id}</span>
+                    <span className={isWin ? 'text-green-400 font-semibold' : 'text-red-400 font-semibold'}>
+                      {t.outcome}
+                    </span>
+                  </div>
+                  <div className="text-slate-400">
+                    Entry {new Date(t.entryTime).toLocaleTimeString()} @ {t.entryPrice.toFixed(2)}
+                  </div>
+                  <div className="text-slate-400">
+                    Exit {new Date(t.exitTime).toLocaleTimeString()} @ {t.exitPrice.toFixed(2)}
+                  </div>
+                  <div className="mt-1">
+                    R-multiple: <span className="font-mono">{r.toFixed(2)}R</span>
+                  </div>
+                </div>
+              );
+            }}
             />
           </div>
         )}
