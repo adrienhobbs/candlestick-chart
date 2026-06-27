@@ -98,6 +98,12 @@ export default function ChartComponent({
   // create-once effect's resize closure without going stale.
   const heightRef = useRef<number | undefined>(height);
   heightRef.current = height;
+  // Line-editing is opt-in: the right-click "add line" menu only opens when a
+  // consumer wires the add/clear handlers. Read via ref from the create-once
+  // contextmenu closure without going stale. (Delete buttons gate on
+  // `onDeleteLine` directly at render.)
+  const lineEditEnabledRef = useRef(false);
+  lineEditEnabledRef.current = Boolean(onAddLine || onClearAllLines);
 
 
   useEffect(() => {
@@ -201,6 +207,9 @@ export default function ChartComponent({
     resizeObserver.observe(chartContainerRef.current);
 
     const handleContextMenu = (e: MouseEvent) => {
+      // No line-editing handlers wired → no custom menu; leave the native
+      // context menu alone (read-only charts, e.g. the trades overlay).
+      if (!lineEditEnabledRef.current) return;
       e.preventDefault();
       e.stopPropagation();
 
@@ -346,25 +355,45 @@ export default function ChartComponent({
     if (!chartRef.current || !focusTradeId) return;
     const trade = trades.find((t) => t.id === focusTradeId);
     if (!trade) return;
-    const entrySec = trade.entryTime / 1000;
-    const exitSec = trade.exitTime / 1000;
-    // Estimate bar spacing from loaded bars to pad the window by ~12 bars.
-    const sorted = [...bars].sort((a, b) => a.timestamp - b.timestamp);
-    const stepSec =
-      sorted.length > 1
-        ? (sorted[sorted.length - 1].timestamp - sorted[0].timestamp) /
-          1000 /
-          (sorted.length - 1)
-        : 300;
-    const pad = Math.max(exitSec - entrySec, stepSec * 12);
+    // Frame by LOGICAL (bar-index) range, not time: lazy-loading a far-off trade
+    // leaves a big gap between bar clusters, and a time-based setVisibleRange
+    // won't reliably land on the far cluster. Build the same ascending, deduped
+    // order candlekit feeds to setData so indices line up, then frame the trade.
+    const seen = new Set<number>();
+    const series: number[] = [];
+    for (const b of [...bars].sort((a, b) => a.timestamp - b.timestamp)) {
+      if (seen.has(b.timestamp)) continue;
+      seen.add(b.timestamp);
+      series.push(b.timestamp);
+    }
+    if (series.length === 0) return;
+    // First bar index at/after a target ms (binary search; series is ascending).
+    const nearestIdx = (ms: number) => {
+      let lo = 0;
+      let hi = series.length - 1;
+      let idx = series.length - 1;
+      while (lo <= hi) {
+        const mid = (lo + hi) >> 1;
+        if (series[mid] >= ms) {
+          idx = mid;
+          hi = mid - 1;
+        } else {
+          lo = mid + 1;
+        }
+      }
+      return idx;
+    };
+    const entryIdx = nearestIdx(trade.entryTime);
+    const exitIdx = Math.max(entryIdx, nearestIdx(trade.exitTime));
+    const PAD = 15;
     const raf = requestAnimationFrame(() => {
       try {
-        chartRef.current?.timeScale().setVisibleRange({
-          from: (entrySec - pad) as Time,
-          to: (exitSec + pad) as Time,
+        chartRef.current?.timeScale().setVisibleLogicalRange({
+          from: entryIdx - PAD,
+          to: exitIdx + PAD,
         });
       } catch {
-        /* range outside loaded data — bars not yet present; a later bars update re-runs this */
+        /* bars not yet present; a later bars update re-runs this */
       }
     });
     return () => cancelAnimationFrame(raf);
@@ -775,7 +804,7 @@ export default function ChartComponent({
         )}
       </div>
 
-      {chartContainerRef.current && lines.map((line) => {
+      {onDeleteLine && chartContainerRef.current && lines.map((line) => {
         const pos = linePositions.get(line.id);
         if (!pos) return null;
 
