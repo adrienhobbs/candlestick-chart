@@ -350,6 +350,14 @@ export default function ChartComponent({
       container.removeEventListener('mouseup', handleMouseUp, true);
       container.removeEventListener('click', handleClick, true);
       chart.remove();
+      // `chart.remove()` disposes every series this chart owned. Drop the stale
+      // series references too — otherwise a remount (e.g. React StrictMode's
+      // double-invoke) re-runs the indicator effect, which would call
+      // `removeSeries` on these now-disposed series via the *new* chart and throw
+      // "Value is undefined". Only bites when an indicator is present at mount.
+      indicatorSeriesRef.current.clear();
+      indicatorPaneIndexRef.current.clear();
+      nextPaneIndexRef.current = 2;
     };
   }, []);
 
@@ -619,7 +627,11 @@ export default function ChartComponent({
             lineWidth: indicator.settings.lineWidth || 2,
             title: indicator.name,
           }, paneIndex);
-          const lineData = data.map(d => ({ time: d.time as Time, value: d.value }));
+          // Drop warm-up / undefined points (e.g. an EMA's first `period` bars);
+          // lightweight-charts rejects NaN/non-finite line values.
+          const lineData = data
+            .map(d => ({ time: d.time as Time, value: d.value }))
+            .filter(d => Number.isFinite(d.value));
           series.setData(lineData as LineData[]);
           indicatorSeriesRef.current.set(indicator.id, series);
         } else if (definition.renderConfig.hasBandFill && definition.renderConfig.fillBands) {
@@ -667,7 +679,9 @@ export default function ChartComponent({
           color: indicator.settings.color || '#8b5cf6',
           title: indicator.name,
         }, paneIndex);
-        const histData = data.map(d => ({ time: d.time as Time, value: d.value }));
+        const histData = data
+          .map(d => ({ time: d.time as Time, value: d.value }))
+          .filter(d => Number.isFinite(d.value));
         series.setData(histData as HistogramData[]);
         indicatorSeriesRef.current.set(indicator.id, series);
       } else if (seriesType === 'area') {
@@ -678,7 +692,9 @@ export default function ChartComponent({
           lineWidth: indicator.settings.lineWidth || 2,
           title: indicator.name,
         }, paneIndex);
-        const areaData = data.map(d => ({ time: d.time as Time, value: d.value }));
+        const areaData = data
+          .map(d => ({ time: d.time as Time, value: d.value }))
+          .filter(d => Number.isFinite(d.value));
         series.setData(areaData as LineData[]);
         indicatorSeriesRef.current.set(indicator.id, series);
       }
@@ -698,7 +714,9 @@ export default function ChartComponent({
       if (definition.renderConfig.outputCount === 1) {
         const series = indicatorSeriesRef.current.get(indicator.id);
         if (series) {
-          const lineData = data.map(d => ({ time: d.time as Time, value: d.value }));
+          const lineData = data
+            .map(d => ({ time: d.time as Time, value: d.value }))
+            .filter(d => Number.isFinite(d.value));
           series.setData(lineData as any);
         }
       } else if (definition.renderConfig.hasBandFill && definition.renderConfig.fillBands) {
