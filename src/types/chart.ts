@@ -16,7 +16,16 @@ export interface ChartLine {
   lineWidth?: number;
   lineStyle?: 'solid' | 'dashed' | 'dotted';
   title?: string;
-  type?: 'entry' | 'stopLoss' | 'takeProfit';
+  type?: 'entry' | 'stopLoss' | 'takeProfit' | 'mfe' | 'mae';
+}
+
+export interface ChartTrade {
+  id: string;
+  entryTime: number;   // ms timestamp — must equal an entry bar's timestamp
+  exitTime: number;    // ms timestamp — must equal an exit bar's timestamp
+  entryPrice: number;
+  exitPrice: number;
+  outcome: 'win' | 'loss';
 }
 
 export interface IndicatorSettings {
