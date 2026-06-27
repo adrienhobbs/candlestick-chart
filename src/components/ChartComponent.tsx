@@ -422,10 +422,11 @@ export default function ChartComponent({
     requestAnimationFrame(() => {
       if (!candlestickSeriesRef.current || !chartContainerRef.current) return;
       const rect = chartContainerRef.current.getBoundingClientRect();
+      const containerHeight = chartContainerRef.current.offsetHeight;
       const newPositions = new Map<string, { top: number; right: number }>();
       lines.forEach((line) => {
         const y = candlestickSeriesRef.current?.priceToCoordinate(line.price);
-        if (y !== null && y !== undefined) {
+        if (y !== null && y !== undefined && y >= 0 && y <= containerHeight) {
           newPositions.set(line.id, {
             top: rect.top + y,
             right: window.innerWidth - rect.right + 68,
@@ -442,10 +443,11 @@ export default function ChartComponent({
     const updatePositions = () => {
       if (!candlestickSeriesRef.current || !chartContainerRef.current) return;
       const rect = chartContainerRef.current.getBoundingClientRect();
+      const containerHeight = chartContainerRef.current.offsetHeight;
       const newPositions = new Map<string, { top: number; right: number }>();
       lines.forEach((line) => {
         const y = candlestickSeriesRef.current?.priceToCoordinate(line.price);
-        if (y !== null && y !== undefined) {
+        if (y !== null && y !== undefined && y >= 0 && y <= containerHeight) {
           newPositions.set(line.id, {
             top: rect.top + y,
             right: window.innerWidth - rect.right + 68,
