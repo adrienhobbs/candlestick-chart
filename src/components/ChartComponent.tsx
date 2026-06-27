@@ -52,6 +52,11 @@ interface ChartComponentProps {
    * view. Pairs with `selectedTradeId` to drive both selection and focus.
    */
   focusTradeId?: string | null;
+  /**
+   * IANA timezone (e.g. "America/New_York") for the axis ticks + crosshair
+   * labels. Omit to use the viewer's local timezone.
+   */
+  timeZone?: string;
 }
 
 export default function ChartComponent({
@@ -71,6 +76,7 @@ export default function ChartComponent({
   renderTradePopup,
   height,
   focusTradeId = null,
+  timeZone,
 }: ChartComponentProps) {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
@@ -125,11 +131,11 @@ export default function ChartComponent({
         vertLines: { color: '#1e293b' },
         horzLines: { color: '#1e293b' },
       },
-      // Render axis ticks + crosshair in the viewer's LOCAL timezone (lightweight-
-      // charts otherwise renders numeric times as UTC, which mismatches any
-      // local-time table/labels alongside the chart).
+      // Render axis ticks + crosshair in `timeZone` (default: the viewer's local
+      // timezone). lightweight-charts otherwise renders numeric times as UTC,
+      // which mismatches local/exchange-time labels alongside the chart.
       localization: {
-        timeFormatter: localCrosshairTimeFormatter,
+        timeFormatter: makeCrosshairTimeFormatter(timeZone),
       },
       width: chartContainerRef.current.clientWidth,
       // Auto-fill the container's height unless an explicit `height` is given.
@@ -140,7 +146,7 @@ export default function ChartComponent({
         timeVisible: true,
         secondsVisible: true,
         borderColor: '#334155',
-        tickMarkFormatter: localTickMarkFormatter,
+        tickMarkFormatter: makeTickMarkFormatter(timeZone),
       },
       rightPriceScale: {
         borderColor: '#334155',
@@ -910,33 +916,40 @@ function getLineStyle(style?: 'solid' | 'dashed' | 'dotted'): LineStyle {
   }
 }
 
-const pad2 = (n: number): string => String(n).padStart(2, '0');
-
-// Axis tick labels in the viewer's LOCAL timezone. `tickMarkType`: 0=Year,
-// 1=Month, 2=DayOfMonth, 3=Time, 4=TimeWithSeconds.
-function localTickMarkFormatter(time: Time, tickMarkType: number): string {
-  const d = new Date((time as number) * 1000);
-  switch (tickMarkType) {
-    case 0:
-      return String(d.getFullYear());
-    case 1:
-      return d.toLocaleString(undefined, { month: 'short' });
-    case 2:
-      return d.toLocaleString(undefined, { month: 'short', day: 'numeric' });
-    case 4:
-      return `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
-    default:
-      return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
-  }
+// Axis tick labels in `timeZone` (undefined = the viewer's local timezone).
+// `tickMarkType`: 0=Year, 1=Month, 2=DayOfMonth, 3=Time, 4=TimeWithSeconds.
+function makeTickMarkFormatter(timeZone?: string) {
+  const time = new Intl.DateTimeFormat('en-US', { timeZone, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+  const timeSec = new Intl.DateTimeFormat('en-US', { timeZone, hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' });
+  const month = new Intl.DateTimeFormat('en-US', { timeZone, month: 'short' });
+  const day = new Intl.DateTimeFormat('en-US', { timeZone, month: 'short', day: 'numeric' });
+  const year = new Intl.DateTimeFormat('en-US', { timeZone, year: 'numeric' });
+  return (t: Time, tickMarkType: number): string => {
+    const d = new Date((t as number) * 1000);
+    switch (tickMarkType) {
+      case 0:
+        return year.format(d);
+      case 1:
+        return month.format(d);
+      case 2:
+        return day.format(d);
+      case 4:
+        return timeSec.format(d);
+      default:
+        return time.format(d);
+    }
+  };
 }
 
-// Crosshair time label in the viewer's LOCAL timezone (matches a local-time table).
-function localCrosshairTimeFormatter(time: Time): string {
-  return new Date((time as number) * 1000).toLocaleString(undefined, {
+// Crosshair time label in `timeZone` (undefined = the viewer's local timezone).
+function makeCrosshairTimeFormatter(timeZone?: string) {
+  const fmt = new Intl.DateTimeFormat('en-US', {
+    timeZone,
     month: 'short',
     day: '2-digit',
     hour: '2-digit',
     minute: '2-digit',
-    hour12: false,
+    hourCycle: 'h23',
   });
+  return (t: Time): string => fmt.format(new Date((t as number) * 1000));
 }
