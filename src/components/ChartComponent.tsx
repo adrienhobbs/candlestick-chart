@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import {
   createChart,
@@ -17,12 +17,14 @@ import {
   HistogramSeries,
   LineSeries,
   AreaSeries,
+  SeriesMarker,
 } from 'lightweight-charts';
-import { OHLCVBar, ChartLine } from '../types/chart';
+import { OHLCVBar, ChartLine, ChartTrade } from '../types/chart';
 import { IndicatorInstance } from '../indicators/core/types';
 import { indicatorRegistry } from '../indicators/core/registry';
 import { indicatorCalculator } from '../indicators/core/calculator';
 import { BandsPrimitive } from '../indicators/primitives/BandsPrimitive';
+import { buildTradeMarkers } from './trade-markers';
 
 interface ChartComponentProps {
   bars: OHLCVBar[];
@@ -36,6 +38,9 @@ interface ChartComponentProps {
   onClearAllLines?: () => void;
   enableBarSelection?: boolean;
   onBarClick?: (bar: OHLCVBar | null) => void;
+  trades?: ChartTrade[];
+  selectedTradeId?: string | null;
+  renderTradePopup?: (trade: ChartTrade) => ReactNode;
 }
 
 export default function ChartComponent({
@@ -50,6 +55,8 @@ export default function ChartComponent({
   onClearAllLines,
   enableBarSelection = true,
   onBarClick,
+  trades = [],
+  selectedTradeId = null,
 }: ChartComponentProps) {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
@@ -602,36 +609,25 @@ export default function ChartComponent({
   }, [bars, indicators]);
 
   useEffect(() => {
-    console.log('Marker effect running, selectedBar:', selectedBar);
-
-    if (!seriesMarkersRef.current) {
-      console.log('Marker API not initialized yet.');
-      return;
-    }
-
-    if (!enableBarSelection) {
-      console.log('Marker effect: clearing markers, selection disabled');
-      seriesMarkersRef.current.setMarkers([]);
-      return;
-    }
-
-    if (!selectedBar) {
-      console.log('Marker effect: clearing markers, no bar selected');
-      seriesMarkersRef.current.setMarkers([]);
-      return;
-    }
-
-    console.log('Marker effect: setting marker for bar:', selectedBar.timestamp);
-    const marker = {
-      time: (selectedBar.timestamp / 1000) as Time,
-      position: 'aboveBar' as const,
-      color: '#3b82f6',
-      shape: 'circle' as const,
-      text: 'Selected',
-    };
-
-    seriesMarkersRef.current.setMarkers([marker]);
-  }, [selectedBar, enableBarSelection]);
+    if (!seriesMarkersRef.current) return;
+    const tradeMarkers = buildTradeMarkers(trades, selectedTradeId);
+    const selectionMarker: SeriesMarker<Time>[] =
+      enableBarSelection && selectedBar
+        ? [
+            {
+              time: (selectedBar.timestamp / 1000) as Time,
+              position: 'aboveBar' as const,
+              color: '#3b82f6',
+              shape: 'circle' as const,
+              text: '',
+            },
+          ]
+        : [];
+    const all = [...tradeMarkers, ...selectionMarker].sort(
+      (a, b) => (a.time as number) - (b.time as number),
+    );
+    seriesMarkersRef.current.setMarkers(all);
+  }, [trades, selectedTradeId, selectedBar, enableBarSelection]);
 
   useEffect(() => {
     if (!chartRef.current || !selectedBar || !enableBarSelection) {
