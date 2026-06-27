@@ -41,6 +41,17 @@ interface ChartComponentProps {
   trades?: ChartTrade[];
   selectedTradeId?: string | null;
   renderTradePopup?: (trade: ChartTrade) => ReactNode;
+  /**
+   * Fixed chart height in px. When omitted, the chart fills its container's
+   * height (observed via ResizeObserver) instead of a fixed default — so a
+   * flex/percent-sized parent gets a full-height chart.
+   */
+  height?: number;
+  /**
+   * When set, recenter the time scale on this trade (by id) so it scrolls into
+   * view. Pairs with `selectedTradeId` to drive both selection and focus.
+   */
+  focusTradeId?: string | null;
 }
 
 export default function ChartComponent({
@@ -58,6 +69,8 @@ export default function ChartComponent({
   trades = [],
   selectedTradeId = null,
   renderTradePopup,
+  height,
+  focusTradeId = null,
 }: ChartComponentProps) {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
@@ -81,6 +94,10 @@ export default function ChartComponent({
   const barsRef = useRef<OHLCVBar[]>(bars);
   const isDraggingRef = useRef(false);
   const mouseDownPosRef = useRef<{ x: number; y: number } | null>(null);
+  // Latest explicit height (px) or undefined for auto-fill; read inside the
+  // create-once effect's resize closure without going stale.
+  const heightRef = useRef<number | undefined>(height);
+  heightRef.current = height;
 
 
   useEffect(() => {
@@ -103,7 +120,10 @@ export default function ChartComponent({
         horzLines: { color: '#1e293b' },
       },
       width: chartContainerRef.current.clientWidth,
-      height: 600,
+      // Auto-fill the container's height unless an explicit `height` is given.
+      // Fall back to 600 only when the container hasn't been laid out yet (a
+      // ResizeObserver below corrects it on first measure).
+      height: height ?? (chartContainerRef.current.clientHeight || 600),
       timeScale: {
         timeVisible: true,
         secondsVisible: true,
@@ -164,9 +184,21 @@ export default function ChartComponent({
 
     const handleResize = () => {
       if (chartContainerRef.current && chart) {
-        chart.applyOptions({ width: chartContainerRef.current.clientWidth });
+        const nextHeight = heightRef.current ?? chartContainerRef.current.clientHeight;
+        chart.applyOptions({
+          width: chartContainerRef.current.clientWidth,
+          // Only drive height when auto-filling and the container has a real
+          // measured height; otherwise leave the current height untouched.
+          ...(heightRef.current === undefined && nextHeight > 0 ? { height: nextHeight } : {}),
+          ...(heightRef.current !== undefined ? { height: heightRef.current } : {}),
+        });
       }
     };
+
+    // A flex/percent-sized parent changes the container without firing window
+    // 'resize'; observe the container directly so the chart tracks it.
+    const resizeObserver = new ResizeObserver(handleResize);
+    resizeObserver.observe(chartContainerRef.current);
 
     const handleContextMenu = (e: MouseEvent) => {
       e.preventDefault();
@@ -284,6 +316,7 @@ export default function ChartComponent({
 
     return () => {
       window.removeEventListener('resize', handleResize);
+      resizeObserver.disconnect();
       container.removeEventListener('contextmenu', handleContextMenu, true);
       container.removeEventListener('mousedown', handleMouseDown, true);
       container.removeEventListener('mousemove', handleMouseMove, true);
@@ -296,6 +329,46 @@ export default function ChartComponent({
   useEffect(() => {
     barsRef.current = bars;
   }, [bars]);
+
+  // Apply an explicit `height` prop change (the create-once effect can't).
+  useEffect(() => {
+    if (chartRef.current && height !== undefined) {
+      chartRef.current.applyOptions({ height });
+    }
+  }, [height]);
+
+  // Recenter the time scale on `focusTradeId` so the trade scrolls into view.
+  // Re-runs when the focus target or the loaded bars change (the bars covering
+  // the trade may arrive after selection), then frames [entry, exit] with pad.
+  // The range is applied on the next animation frame so it lands AFTER the
+  // sibling bars→setData effect (which would otherwise snap the view back).
+  useEffect(() => {
+    if (!chartRef.current || !focusTradeId) return;
+    const trade = trades.find((t) => t.id === focusTradeId);
+    if (!trade) return;
+    const entrySec = trade.entryTime / 1000;
+    const exitSec = trade.exitTime / 1000;
+    // Estimate bar spacing from loaded bars to pad the window by ~12 bars.
+    const sorted = [...bars].sort((a, b) => a.timestamp - b.timestamp);
+    const stepSec =
+      sorted.length > 1
+        ? (sorted[sorted.length - 1].timestamp - sorted[0].timestamp) /
+          1000 /
+          (sorted.length - 1)
+        : 300;
+    const pad = Math.max(exitSec - entrySec, stepSec * 12);
+    const raf = requestAnimationFrame(() => {
+      try {
+        chartRef.current?.timeScale().setVisibleRange({
+          from: (entrySec - pad) as Time,
+          to: (exitSec + pad) as Time,
+        });
+      } catch {
+        /* range outside loaded data — bars not yet present; a later bars update re-runs this */
+      }
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [focusTradeId, trades, bars]);
 
   useEffect(() => {
     if (!candlestickSeriesRef.current || !volumeSeriesRef.current) return;
