@@ -787,7 +787,7 @@ export default function ChartComponent({
 // measured) so the button clears the label.
 function estimateLabelTitleWidth(title?: string): number {
   if (!title) return 0;
-  return title.length * 7 + 12;
+  return title.length * 7 + 18;
 }
 
 function getLineStyle(style?: 'solid' | 'dashed' | 'dotted'): LineStyle {
