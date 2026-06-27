@@ -57,6 +57,7 @@ export default function ChartComponent({
   onBarClick,
   trades = [],
   selectedTradeId = null,
+  renderTradePopup,
 }: ChartComponentProps) {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
@@ -73,6 +74,7 @@ export default function ChartComponent({
   const [selectedBar, setSelectedBar] = useState<OHLCVBar | null>(null);
   const selectedBarRef = useRef<OHLCVBar | null>(null);
   const [spotlightPosition, setSpotlightPosition] = useState<{ x: number; width: number } | null>(null);
+  const [tradePopupPos, setTradePopupPos] = useState<{ x: number } | null>(null);
   const previousBarsRef = useRef<OHLCVBar[]>([]);
   const previousBarsLengthRef = useRef<number>(0);
   const isLoadingRef = useRef(false);
@@ -660,6 +662,32 @@ export default function ChartComponent({
     };
   }, [selectedBar, enableBarSelection, bars.length]);
 
+  const selectedTrade = trades.find((t) => t.id === selectedTradeId) ?? null;
+
+  useEffect(() => {
+    if (!chartRef.current || !selectedTrade) {
+      setTradePopupPos(null);
+      return;
+    }
+
+    const updateTradePopupPos = () => {
+      if (!chartRef.current || !selectedTrade) return;
+      const timeScale = chartRef.current.timeScale();
+      const x = timeScale.timeToCoordinate((selectedTrade.entryTime / 1000) as Time);
+      // off-screen (bar scrolled out of view) → timeToCoordinate returns null → hide
+      setTradePopupPos(x !== null ? { x } : null);
+    };
+
+    updateTradePopupPos();
+    const timeScale = chartRef.current.timeScale();
+    timeScale.subscribeVisibleLogicalRangeChange(updateTradePopupPos);
+    return () => {
+      if (chartRef.current) {
+        chartRef.current.timeScale().unsubscribeVisibleLogicalRangeChange(updateTradePopupPos);
+      }
+    };
+  }, [selectedTrade, selectedTrade?.entryTime]);
+
   const handleDeleteLine = (lineId: string) => {
     if (onDeleteLine) {
       onDeleteLine(lineId);
@@ -701,6 +729,15 @@ export default function ChartComponent({
               borderRight: '1px solid rgba(59, 130, 246, 0.4)',
             }}
           />
+        )}
+
+        {selectedTrade && tradePopupPos && renderTradePopup && (
+          <div
+            className="absolute z-20 pointer-events-auto"
+            style={{ left: `${tradePopupPos.x}px`, top: 8, transform: 'translateX(-50%)' }}
+          >
+            {renderTradePopup(selectedTrade)}
+          </div>
         )}
       </div>
 
