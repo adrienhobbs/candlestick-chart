@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import {
   createChart,
@@ -61,6 +61,28 @@ interface ChartComponentProps {
   priceBands?: PriceBand[];
 }
 
+// Palette for multi-output indicators whose fields lack an explicit color setting.
+const MULTI_LINE_PALETTE = ['#3b82f6', '#ef4444', '#10b981', '#f59e0b', '#a855f7', '#06b6d4'];
+
+// Default share of the chart height given to the volume pane (price action dominates).
+const VOLUME_PANE_FRACTION = 0.14;
+
+// Color for a named output field of a multi-output indicator: prefer an explicit
+// `<field>Color` setting, fall back to the generic `color` for the primary
+// `value` series, else a stable palette slot.
+function fieldColor(settings: Record<string, any>, key: string, idx: number): string {
+  return (
+    settings[`${key}Color`] ||
+    (key === 'value' ? settings.color : undefined) ||
+    MULTI_LINE_PALETTE[idx % MULTI_LINE_PALETTE.length]
+  );
+}
+
+// Output field names of a calculated indicator point (everything but `time`).
+function outputFieldKeys(point: Record<string, number>): string[] {
+  return Object.keys(point).filter((k) => k !== 'time');
+}
+
 export default function ChartComponent({
   bars,
   onLoadMoreData,
@@ -97,6 +119,19 @@ export default function ChartComponent({
   const [bandRects, setBandRects] = useState<Array<{ id: string; top: number; height: number; color: string }>>([]);
   const [selectedBar, setSelectedBar] = useState<OHLCVBar | null>(null);
   const selectedBarRef = useRef<OHLCVBar | null>(null);
+
+  // Size the volume pane to a small fraction of the chart so price action stays
+  // dominant. Absolute px (this lightweight-charts build has no stretch factors),
+  // so it's re-applied whenever the chart height changes.
+  const sizeVolumePane = useCallback(() => {
+    const chart = chartRef.current;
+    if (!chart) return;
+    const panes = chart.panes();
+    if (panes.length < 2) return;
+    const totalH = chartContainerRef.current?.clientHeight ?? 0;
+    if (totalH <= 0) return;
+    panes[1].setHeight(Math.max(48, Math.round(totalH * VOLUME_PANE_FRACTION)));
+  }, []);
   const [spotlightPosition, setSpotlightPosition] = useState<{ x: number; width: number } | null>(null);
   const [tradePopupPos, setTradePopupPos] = useState<{ x: number } | null>(null);
   const previousBarsRef = useRef<OHLCVBar[]>([]);
@@ -190,6 +225,9 @@ export default function ChartComponent({
     chartRef.current = chart;
     candlestickSeriesRef.current = candlestickSeries;
     volumeSeriesRef.current = volumeSeries;
+
+    // Shrink the volume pane by default — price action should dominate.
+    sizeVolumePane();
 
     seriesMarkersRef.current = createSeriesMarkers(candlestickSeries, []);
 
@@ -365,12 +403,14 @@ export default function ChartComponent({
     barsRef.current = bars;
   }, [bars]);
 
-  // Apply an explicit `height` prop change (the create-once effect can't).
+  // Apply an explicit `height` prop change (the create-once effect can't), and
+  // re-apply the volume pane's fractional size against the new total height.
   useEffect(() => {
     if (chartRef.current && height !== undefined) {
       chartRef.current.applyOptions({ height });
+      sizeVolumePane();
     }
-  }, [height]);
+  }, [height, sizeVolumePane]);
 
   // Recenter the time scale on `focusTradeId` so the trade scrolls into view.
   // Re-runs when the focus target or the loaded bars change (the bars covering
@@ -673,6 +713,36 @@ export default function ChartComponent({
           indicatorSeriesRef.current.set(`${indicator.id}-upper`, upperSeries);
           indicatorSeriesRef.current.set(`${indicator.id}-middle`, middleSeries);
           indicatorSeriesRef.current.set(`${indicator.id}-lower`, lowerSeries);
+        } else {
+          // Generic multi-output line indicator with no band fill (MACD,
+          // Stochastic, StochRSI, Ichimoku, …): one series per output field.
+          // A field literally named "histogram" renders as a histogram column;
+          // every other numeric field renders as a line. Keyed `${id}-${field}`
+          // so the bars-change effect can update each one.
+          outputFieldKeys(data[0]).forEach((key, idx) => {
+            const points = data
+              .map((d) => ({ time: d.time as Time, value: d[key] }))
+              .filter((d) => Number.isFinite(d.value));
+            const title = key === 'value' ? indicator.name : `${indicator.name} ${key}`;
+            const series =
+              key === 'histogram'
+                ? chartRef.current!.addSeries(
+                    HistogramSeries,
+                    { color: fieldColor(indicator.settings, key, idx), title },
+                    paneIndex,
+                  )
+                : chartRef.current!.addSeries(
+                    LineSeries,
+                    {
+                      color: fieldColor(indicator.settings, key, idx),
+                      lineWidth: indicator.settings.lineWidth || 2,
+                      title,
+                    },
+                    paneIndex,
+                  );
+            series.setData(points as (LineData | HistogramData)[]);
+            indicatorSeriesRef.current.set(`${indicator.id}-${key}`, series);
+          });
         }
       } else if (seriesType === 'histogram') {
         const series = chartRef.current!.addSeries(HistogramSeries, {
@@ -735,6 +805,17 @@ export default function ChartComponent({
           middleSeries.setData(middleData as any);
           lowerSeries.setData(lowerData as any);
         }
+      } else {
+        // Generic multi-output indicator (mirrors the setup branch): refresh each
+        // per-field series so MACD/Stochastic/etc. track lazily-loaded bars.
+        outputFieldKeys(data[0]).forEach((key) => {
+          const series = indicatorSeriesRef.current.get(`${indicator.id}-${key}`);
+          if (!series) return;
+          const points = data
+            .map((d) => ({ time: d.time as Time, value: d[key] }))
+            .filter((d) => Number.isFinite(d.value));
+          series.setData(points as any);
+        });
       }
     });
   }, [bars, indicators]);

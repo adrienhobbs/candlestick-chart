@@ -41,7 +41,7 @@ export const MACDIndicator: IndicatorDefinition = {
       max: 50,
       step: 1,
     },
-    macdColor: {
+    color: {
       type: 'color',
       label: 'MACD Line Color',
       defaultValue: '#3b82f6',

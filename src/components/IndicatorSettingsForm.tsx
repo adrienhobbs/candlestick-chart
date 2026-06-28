@@ -16,11 +16,11 @@ export default function IndicatorSettingsForm({
     <div className="space-y-4">
       {Object.entries(settings).map(([key, field]) => (
         <div key={key}>
-          <label className="block text-sm font-medium text-slate-300 mb-1">
+          <label className="block text-sm font-medium text-[var(--ck-text-secondary,#cbd5e1)] mb-1">
             {field.label}
           </label>
           {field.description && (
-            <p className="text-xs text-slate-400 mb-2">{field.description}</p>
+            <p className="text-xs text-[var(--ck-text-muted,#94a3b8)] mb-2">{field.description}</p>
           )}
           {renderField(key, field, currentValues[key], onChange)}
         </div>
@@ -91,7 +91,7 @@ function ColorPicker({ value, defaultValue, onChange }: { value: any; defaultVal
           type="text"
           value={colorValue}
           onChange={(e) => handleTextChange(e.target.value)}
-          className="flex-1 px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm"
+          className="flex-1 px-3 py-2 bg-[var(--ck-surface-2,#334155)] border border-[var(--ck-border,#334155)] rounded-[var(--ck-radius,0.5rem)] text-[var(--ck-text,#f1f5f9)] focus:outline-none focus:ring-2 focus:ring-[var(--ck-ring,#3b82f6)] font-mono text-sm"
         />
       </div>
       <div className="flex items-center gap-2">
@@ -101,9 +101,9 @@ function ColorPicker({ value, defaultValue, onChange }: { value: any; defaultVal
           max="100"
           value={localOpacity}
           onChange={(e) => handleOpacityChange(parseInt(e.target.value))}
-          className="flex-1 h-2 bg-slate-600 rounded-lg appearance-none cursor-pointer"
+          className="flex-1 h-2 bg-[var(--ck-surface-hover,#475569)] rounded-[var(--ck-radius,0.5rem)] appearance-none cursor-pointer"
         />
-        <span className="text-sm text-slate-400 w-12 text-right">{localOpacity}%</span>
+        <span className="text-sm text-[var(--ck-text-muted,#94a3b8)] w-12 text-right">{localOpacity}%</span>
       </div>
     </div>
   );
@@ -125,7 +125,7 @@ function renderField(
           min={field.min}
           max={field.max}
           step={field.step}
-          className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="w-full px-3 py-2 bg-[var(--ck-surface-2,#334155)] border border-[var(--ck-border,#334155)] rounded-[var(--ck-radius,0.5rem)] text-[var(--ck-text,#f1f5f9)] focus:outline-none focus:ring-2 focus:ring-[var(--ck-ring,#3b82f6)]"
         />
       );
 
@@ -145,9 +145,9 @@ function renderField(
             type="checkbox"
             checked={value ?? field.defaultValue}
             onChange={(e) => onChange(key, e.target.checked)}
-            className="w-4 h-4 text-blue-600 bg-slate-700 border-slate-600 rounded focus:ring-blue-500"
+            className="w-4 h-4 text-[var(--ck-accent,#2563eb)] bg-[var(--ck-surface-2,#334155)] border-[var(--ck-border,#334155)] rounded focus:ring-[var(--ck-ring,#3b82f6)]"
           />
-          <span className="text-sm text-slate-300">
+          <span className="text-sm text-[var(--ck-text-secondary,#cbd5e1)]">
             {value ?? field.defaultValue ? 'Enabled' : 'Disabled'}
           </span>
         </label>
@@ -158,7 +158,7 @@ function renderField(
         <select
           value={value ?? field.defaultValue}
           onChange={(e) => onChange(key, e.target.value)}
-          className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="w-full px-3 py-2 bg-[var(--ck-surface-2,#334155)] border border-[var(--ck-border,#334155)] rounded-[var(--ck-radius,0.5rem)] text-[var(--ck-text,#f1f5f9)] focus:outline-none focus:ring-2 focus:ring-[var(--ck-ring,#3b82f6)]"
         >
           {field.options?.map((option) => (
             <option key={option.value} value={option.value}>
@@ -173,7 +173,7 @@ function renderField(
         <select
           value={value ?? field.defaultValue}
           onChange={(e) => onChange(key, e.target.value)}
-          className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="w-full px-3 py-2 bg-[var(--ck-surface-2,#334155)] border border-[var(--ck-border,#334155)] rounded-[var(--ck-radius,0.5rem)] text-[var(--ck-text,#f1f5f9)] focus:outline-none focus:ring-2 focus:ring-[var(--ck-ring,#3b82f6)]"
         >
           <option value="solid">Solid</option>
           <option value="dashed">Dashed</option>
@@ -187,7 +187,7 @@ function renderField(
           type="text"
           value={value ?? field.defaultValue}
           onChange={(e) => onChange(key, e.target.value)}
-          className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="w-full px-3 py-2 bg-[var(--ck-surface-2,#334155)] border border-[var(--ck-border,#334155)] rounded-[var(--ck-radius,0.5rem)] text-[var(--ck-text,#f1f5f9)] focus:outline-none focus:ring-2 focus:ring-[var(--ck-ring,#3b82f6)]"
         />
       );
   }

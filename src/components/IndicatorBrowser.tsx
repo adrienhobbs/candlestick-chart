@@ -50,22 +50,25 @@ export default function IndicatorBrowser({
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-slate-800 rounded-lg shadow-xl w-full max-w-3xl max-h-[80vh] flex flex-col">
-        <div className="flex items-center justify-between p-4 border-b border-slate-700">
-          <h2 className="text-lg font-semibold text-slate-100">Add Indicator</h2>
+    <div className="fixed inset-0 bg-[var(--ck-overlay,rgba(0,0,0,0.5))] flex items-center justify-center z-50">
+      <div
+        className="bg-[var(--ck-surface,#1e293b)] rounded-[var(--ck-radius,0.5rem)] shadow-xl w-full max-w-3xl max-h-[80vh] flex flex-col"
+        style={{ fontFamily: 'var(--ck-font, inherit)' }}
+      >
+        <div className="flex items-center justify-between p-4 border-b border-[var(--ck-border,#334155)]">
+          <h2 className="text-lg font-semibold text-[var(--ck-text,#f1f5f9)]">Add Indicator</h2>
           <button
             onClick={onClose}
-            className="text-slate-400 hover:text-slate-200 transition"
+            className="text-[var(--ck-text-muted,#94a3b8)] hover:text-[var(--ck-text,#f1f5f9)] transition"
           >
             <X size={20} />
           </button>
         </div>
 
-        <div className="p-4 border-b border-slate-700">
+        <div className="p-4 border-b border-[var(--ck-border,#334155)]">
           <div className="relative">
             <Search
-              className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--ck-text-muted,#94a3b8)]"
               size={20}
             />
             <input
@@ -73,7 +76,7 @@ export default function IndicatorBrowser({
               placeholder="Search indicators..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full pl-10 pr-4 py-2 bg-[var(--ck-surface-2,#334155)] border border-[var(--ck-border,#334155)] rounded-[var(--ck-radius,0.5rem)] text-[var(--ck-text,#f1f5f9)] placeholder-[var(--ck-text-muted,#94a3b8)] focus:outline-none focus:ring-2 focus:ring-[var(--ck-ring,#3b82f6)]"
             />
           </div>
 
@@ -82,10 +85,10 @@ export default function IndicatorBrowser({
               <button
                 key={category}
                 onClick={() => setSelectedCategory(category as IndicatorCategory | 'All')}
-                className={`px-3 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap transition ${
+                className={`px-3 py-1.5 rounded-[var(--ck-radius,0.5rem)] text-sm font-medium whitespace-nowrap transition ${
                   selectedCategory === category
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                    ? 'bg-[var(--ck-accent,#2563eb)] text-[var(--ck-accent-text,#ffffff)]'
+                    : 'bg-[var(--ck-surface-2,#334155)] text-[var(--ck-text-secondary,#cbd5e1)] hover:bg-[var(--ck-surface-hover,#475569)]'
                 }`}
               >
                 {category}
@@ -96,7 +99,7 @@ export default function IndicatorBrowser({
 
         <div className="flex-1 overflow-y-auto p-4">
           {filteredIndicators.length === 0 ? (
-            <div className="text-center py-12 text-slate-400">
+            <div className="text-center py-12 text-[var(--ck-text-muted,#94a3b8)]">
               <p>No indicators found</p>
               {searchQuery && (
                 <p className="text-sm mt-2">
@@ -145,11 +148,11 @@ function IndicatorCard({ indicator, onAdd }: IndicatorCardProps) {
   };
 
   return (
-    <div className="bg-slate-700/50 rounded-lg p-4 hover:bg-slate-700 transition group">
+    <div className="bg-[var(--ck-surface-2,#334155)] rounded-[var(--ck-radius,0.5rem)] p-4 hover:bg-[var(--ck-surface-hover,#475569)] transition group">
       <div className="flex items-start justify-between gap-3">
         <div className="flex-1">
           <div className="flex items-center gap-2 mb-2">
-            <h3 className="text-slate-100 font-medium">{indicator.metadata.name}</h3>
+            <h3 className="text-[var(--ck-text,#f1f5f9)] font-medium">{indicator.metadata.name}</h3>
             <span
               className={`px-2 py-0.5 rounded text-xs font-medium ${getCategoryColor(
                 indicator.metadata.category
@@ -158,11 +161,11 @@ function IndicatorCard({ indicator, onAdd }: IndicatorCardProps) {
               {indicator.metadata.category}
             </span>
           </div>
-          <p className="text-sm text-slate-400">{indicator.metadata.description}</p>
+          <p className="text-sm text-[var(--ck-text-muted,#94a3b8)]">{indicator.metadata.description}</p>
         </div>
         <button
           onClick={onAdd}
-          className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition text-sm font-medium opacity-0 group-hover:opacity-100"
+          className="flex items-center gap-1.5 px-3 py-1.5 bg-[var(--ck-accent,#2563eb)] hover:bg-[var(--ck-accent-hover,#1d4ed8)] text-[var(--ck-accent-text,#ffffff)] rounded-[var(--ck-radius,0.5rem)] transition text-sm font-medium opacity-0 group-hover:opacity-100"
         >
           <Plus size={16} />
           Add
