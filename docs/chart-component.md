@@ -227,6 +227,17 @@ const bars: OHLCVBar[] = [
 | `onAddLine` | `(type, price) => void` | - | Callback when line is added from context menu |
 | `enableBarSelection` | `boolean` | `true` | Enable/disable bar selection feature |
 | `onBarClick` | `(bar: OHLCVBar \| null) => void` | - | Callback when bar is clicked or deselected |
+| `trades` | `ChartTrade[]` | `[]` | Trades to mark on the chart (entry/exit arrows, colored by win/loss) |
+| `selectedTradeId` | `string \| null` | `null` | Highlights + labels the matching trade's markers |
+| `focusTradeId` | `string \| null` | `null` | Scrolls/frames the matching trade into view |
+| `priceBands` | `PriceBand[]` | `[]` | Shaded horizontal price bands (e.g. an MFE↔MAE zone) |
+| `timeZone` | `string` | viewer local | IANA timezone for axis ticks + crosshair labels |
+| `height` | `number` | auto-fill | Fixed chart height in px (omit to fill the container) |
+| `theme` | `Partial<ChartTheme>` | slate dark | Chart canvas colors — background, grid, axes, candles, volume. See [Theming](./theming.md) |
+
+> **Theming the chart and its modals** — the chart canvas takes a `theme` prop;
+> the indicator browser / settings dialog read `--ck-*` CSS variables. Both are
+> covered in **[Theming](./theming.md)**.
 
 ## Features
 

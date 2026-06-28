@@ -8,7 +8,7 @@ export { default as IndicatorSettingsForm } from './components/IndicatorSettings
 export { default as SettingsDialog } from './components/SettingsDialog';
 
 // Types
-export type { OHLCVBar, ChartLine, ChartTrade, PriceBand, IndicatorSettings, IndicatorPanel } from './types/chart';
+export type { OHLCVBar, ChartLine, ChartTrade, PriceBand, ChartTheme, IndicatorSettings, IndicatorPanel } from './types/chart';
 
 // Hooks
 export { useChartAPI } from './hooks/useChartAPI';

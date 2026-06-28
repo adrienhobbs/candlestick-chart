@@ -5,6 +5,7 @@ This directory contains comprehensive documentation for the trading chart applic
 ## Documentation Files
 
 - **[ChartComponent Usage](./chart-component.md)** - Complete guide to using the ChartComponent in your application
+- **[Theming](./theming.md)** - Theme the chart canvas (`theme` prop) and the modals/popups (`--ck-*` CSS variables)
 - **[Data Management Guide](./data-management.md)** - Comprehensive guide to managing bar data with various providers
 - **[Getting Started](./getting-started.md)** - Quick start guide for using the indicator system
 - **[Creating Indicators](./creating-indicators.md)** - Step-by-step guide to creating custom indicators

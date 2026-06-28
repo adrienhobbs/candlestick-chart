@@ -95,6 +95,7 @@ See the [docs](./docs) folder for comprehensive documentation:
 
 - [Data Management Guide](./docs/data-management.md) - Complete guide to fetching and managing market data
 - [ChartComponent Usage](./docs/chart-component.md) - Complete guide to using the chart
+- [Theming](./docs/theming.md) - Theme the chart canvas + modals/popups
 - [Creating Indicators](./docs/creating-indicators.md) - Build custom indicators
 - [Architecture](./docs/architecture.md) - System design and architecture
 - [API Reference](./docs/api-reference.md) - Complete API documentation

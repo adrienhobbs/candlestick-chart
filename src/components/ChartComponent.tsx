@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import {
   createChart,
@@ -19,7 +19,7 @@ import {
   AreaSeries,
   SeriesMarker,
 } from 'lightweight-charts';
-import { OHLCVBar, ChartLine, ChartTrade, PriceBand } from '../types/chart';
+import { OHLCVBar, ChartLine, ChartTrade, PriceBand, ChartTheme } from '../types/chart';
 import { IndicatorInstance } from '../indicators/core/types';
 import { indicatorRegistry } from '../indicators/core/registry';
 import { indicatorCalculator } from '../indicators/core/calculator';
@@ -59,7 +59,27 @@ interface ChartComponentProps {
   timeZone?: string;
   /** Shaded horizontal price bands (e.g. an MFE↔MAE excursion zone). */
   priceBands?: PriceBand[];
+  /**
+   * Visual theme for the chart canvas (background, grid, axes, candles, volume).
+   * A partial override of {@link DEFAULT_CHART_THEME}; re-applied live on change.
+   */
+  theme?: Partial<ChartTheme>;
 }
+
+// Library default chart theme (slate dark). Consumers override via the `theme` prop.
+const DEFAULT_CHART_THEME: ChartTheme = {
+  background: '#0f172a',
+  textColor: '#94a3b8',
+  fontFamily: undefined,
+  gridColor: '#1e293b',
+  axisBorderColor: '#334155',
+  crosshairColor: '#475569',
+  paneSeparatorColor: '#1e293b',
+  upColor: '#10b981',
+  downColor: '#ef4444',
+  volumeUpColor: '#10b98180',
+  volumeDownColor: '#ef444480',
+};
 
 // Palette for multi-output indicators whose fields lack an explicit color setting.
 const MULTI_LINE_PALETTE = ['#3b82f6', '#ef4444', '#10b981', '#f59e0b', '#a855f7', '#06b6d4'];
@@ -102,7 +122,17 @@ export default function ChartComponent({
   focusTradeId = null,
   timeZone,
   priceBands = [],
+  theme,
 }: ChartComponentProps) {
+  // Merge the consumer's partial theme over the library default. `theme` should
+  // be memoized by the caller; a stable identity keeps the live-apply effect from
+  // thrashing. Read inside non-reactive closures (create/bars effects) via the ref.
+  const resolvedTheme: ChartTheme = useMemo(
+    () => ({ ...DEFAULT_CHART_THEME, ...theme }),
+    [theme],
+  );
+  const themeRef = useRef(resolvedTheme);
+  themeRef.current = resolvedTheme;
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const candlestickSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
@@ -157,19 +187,21 @@ export default function ChartComponent({
 
     chartContainerRef.current.style.position = 'relative';
 
+    const t = themeRef.current;
     const chart = createChart(chartContainerRef.current, {
       layout: {
-        background: { type: ColorType.Solid, color: '#0f172a' },
-        textColor: '#94a3b8',
+        background: { type: ColorType.Solid, color: t.background },
+        textColor: t.textColor,
+        ...(t.fontFamily ? { fontFamily: t.fontFamily } : {}),
         panes: {
           enableResize: true,
-          separatorColor: '#1e293b',
+          separatorColor: t.paneSeparatorColor,
           separatorHoverColor: 'rgba(148,163,184,0.5)',
         },
       },
       grid: {
-        vertLines: { color: '#1e293b' },
-        horzLines: { color: '#1e293b' },
+        vertLines: { color: t.gridColor },
+        horzLines: { color: t.gridColor },
       },
       // Render axis ticks + crosshair in `timeZone` (default: the viewer's local
       // timezone). lightweight-charts otherwise renders numeric times as UTC,
@@ -185,37 +217,37 @@ export default function ChartComponent({
       timeScale: {
         timeVisible: true,
         secondsVisible: true,
-        borderColor: '#334155',
+        borderColor: t.axisBorderColor,
         tickMarkFormatter: makeTickMarkFormatter(timeZone),
       },
       rightPriceScale: {
-        borderColor: '#334155',
+        borderColor: t.axisBorderColor,
       },
       crosshair: {
         mode: 0,
         vertLine: {
           width: 1,
-          color: '#475569',
+          color: t.crosshairColor,
           style: 3,
         },
         horzLine: {
           width: 1,
-          color: '#475569',
+          color: t.crosshairColor,
           style: 3,
         },
       },
     });
 
     const candlestickSeries = chart.addSeries(CandlestickSeries, {
-      upColor: '#10b981',
-      downColor: '#ef4444',
+      upColor: t.upColor,
+      downColor: t.downColor,
       borderVisible: false,
-      wickUpColor: '#10b981',
-      wickDownColor: '#ef4444',
+      wickUpColor: t.upColor,
+      wickDownColor: t.downColor,
     }, 0);
 
     const volumeSeries = chart.addSeries(HistogramSeries, {
-      color: '#64748b',
+      color: t.volumeUpColor,
       priceFormat: {
         type: 'volume',
       },
@@ -396,6 +428,13 @@ export default function ChartComponent({
       indicatorSeriesRef.current.clear();
       indicatorPaneIndexRef.current.clear();
       nextPaneIndexRef.current = 2;
+      // Reset the bars-diff trackers too. They persist across a remount, so the
+      // next chart's bars effect would otherwise see prev === current and take the
+      // single-bar `update()` path on its *fresh, empty* candle series — leaving
+      // only one candle (price scale collapses; candles look missing). Clearing
+      // forces a full setData on the new series. (Bites StrictMode's double mount.)
+      previousBarsRef.current = [];
+      previousBarsLengthRef.current = 0;
     };
   }, []);
 
@@ -411,6 +450,48 @@ export default function ChartComponent({
       sizeVolumePane();
     }
   }, [height, sizeVolumePane]);
+
+  // Re-theme the existing chart live when `theme` changes (e.g. a host app's
+  // dark/light toggle) — no recreate. Candle colors are series options; volume
+  // bar colors live in the data, so they're re-set from the current bars.
+  useEffect(() => {
+    const chart = chartRef.current;
+    if (!chart) return;
+    chart.applyOptions({
+      layout: {
+        background: { type: ColorType.Solid, color: resolvedTheme.background },
+        textColor: resolvedTheme.textColor,
+        ...(resolvedTheme.fontFamily ? { fontFamily: resolvedTheme.fontFamily } : {}),
+        panes: { separatorColor: resolvedTheme.paneSeparatorColor },
+      },
+      grid: {
+        vertLines: { color: resolvedTheme.gridColor },
+        horzLines: { color: resolvedTheme.gridColor },
+      },
+      timeScale: { borderColor: resolvedTheme.axisBorderColor },
+      rightPriceScale: { borderColor: resolvedTheme.axisBorderColor },
+      crosshair: {
+        vertLine: { color: resolvedTheme.crosshairColor },
+        horzLine: { color: resolvedTheme.crosshairColor },
+      },
+    });
+    candlestickSeriesRef.current?.applyOptions({
+      upColor: resolvedTheme.upColor,
+      downColor: resolvedTheme.downColor,
+      wickUpColor: resolvedTheme.upColor,
+      wickDownColor: resolvedTheme.downColor,
+    });
+    const vol = volumeSeriesRef.current;
+    if (vol && barsRef.current.length > 0) {
+      vol.setData(
+        barsRef.current.map((bar) => ({
+          time: (bar.timestamp / 1000) as Time,
+          value: bar.volume,
+          color: bar.close >= bar.open ? resolvedTheme.volumeUpColor : resolvedTheme.volumeDownColor,
+        })),
+      );
+    }
+  }, [resolvedTheme]);
 
   // Recenter the time scale on `focusTradeId` so the trade scrolls into view.
   // Re-runs when the focus target or the loaded bars change (the bars covering
@@ -452,8 +533,14 @@ export default function ChartComponent({
     const entryIdx = nearestIdx(trade.entryTime);
     const exitIdx = Math.max(entryIdx, nearestIdx(trade.exitTime));
     const PAD = 15;
-    const raf = requestAnimationFrame(() => {
+    const frame = () => {
       try {
+        // Ensure the candle price axis auto-fits the framed window. On the initial
+        // load setData auto-scrolls to the latest bars (a different price level)
+        // and leaves the scale there; re-asserting autoScale *before* moving the
+        // visible range makes lightweight-charts re-fit to the trade's candles
+        // (otherwise they sit off-screen until the next scroll/zoom).
+        candlestickSeriesRef.current?.priceScale().applyOptions({ autoScale: true });
         chartRef.current?.timeScale().setVisibleLogicalRange({
           from: entryIdx - PAD,
           to: exitIdx + PAD,
@@ -461,8 +548,15 @@ export default function ChartComponent({
       } catch {
         /* bars not yet present; a later bars update re-runs this */
       }
-    });
-    return () => cancelAnimationFrame(raf);
+    };
+    // rAF for a snappy frame on navigation; a short timeout repeats it after the
+    // initial setData's auto-scroll has settled so the first open frames too.
+    const raf = requestAnimationFrame(frame);
+    const timer = setTimeout(frame, 90);
+    return () => {
+      cancelAnimationFrame(raf);
+      clearTimeout(timer);
+    };
   }, [focusTradeId, trades, bars]);
 
   useEffect(() => {
@@ -503,7 +597,7 @@ export default function ChartComponent({
       const volumeData: HistogramData[] = uniqueBars.map((bar) => ({
         time: (bar.timestamp / 1000) as Time,
         value: bar.volume,
-        color: bar.close >= bar.open ? '#10b98180' : '#ef444480',
+        color: bar.close >= bar.open ? themeRef.current.volumeUpColor : themeRef.current.volumeDownColor,
       }));
 
       candlestickSeriesRef.current.setData(candleData);
@@ -521,7 +615,7 @@ export default function ChartComponent({
       const volumeUpdate: HistogramData = {
         time: (lastBar.timestamp / 1000) as Time,
         value: lastBar.volume,
-        color: lastBar.close >= lastBar.open ? '#10b98180' : '#ef444480',
+        color: lastBar.close >= lastBar.open ? themeRef.current.volumeUpColor : themeRef.current.volumeDownColor,
       };
 
       candlestickSeriesRef.current.update(candleUpdate);
@@ -822,14 +916,18 @@ export default function ChartComponent({
 
   useEffect(() => {
     if (!seriesMarkersRef.current) return;
-    const tradeMarkers = buildTradeMarkers(trades, selectedTradeId);
+    // Win/loss markers track the theme's up/down candle colors.
+    const tradeMarkers = buildTradeMarkers(trades, selectedTradeId, {
+      win: resolvedTheme.upColor,
+      loss: resolvedTheme.downColor,
+    });
     const selectionMarker: SeriesMarker<Time>[] =
       enableBarSelection && selectedBar
         ? [
             {
               time: (selectedBar.timestamp / 1000) as Time,
               position: 'aboveBar' as const,
-              color: '#3b82f6',
+              color: resolvedTheme.crosshairColor,
               shape: 'circle' as const,
               text: '',
             },
@@ -839,7 +937,7 @@ export default function ChartComponent({
       (a, b) => (a.time as number) - (b.time as number),
     );
     seriesMarkersRef.current.setMarkers(all);
-  }, [trades, selectedTradeId, selectedBar, enableBarSelection]);
+  }, [trades, selectedTradeId, selectedBar, enableBarSelection, resolvedTheme]);
 
   useEffect(() => {
     if (!chartRef.current || !selectedBar || !enableBarSelection) {

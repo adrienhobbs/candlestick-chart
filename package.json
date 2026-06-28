@@ -1,6 +1,6 @@
 {
   "name": "@adrienhobbs/candlekit",
-  "version": "0.2.6",
+  "version": "0.2.7",
   "description": "React candlestick trading chart on TradingView Lightweight Charts, with a pluggable indicator system.",
   "license": "MIT",
   "author": "adrienhobbs",
