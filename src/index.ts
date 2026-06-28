@@ -3,9 +3,11 @@
 
 // Components (all default exports in source → re-exported as named)
 export { default as ChartComponent } from './components/ChartComponent';
+export type { ContextMenuItem } from './components/ChartComponent';
 export { default as IndicatorBrowser } from './components/IndicatorBrowser';
 export { default as IndicatorSettingsForm } from './components/IndicatorSettingsForm';
 export { default as SettingsDialog } from './components/SettingsDialog';
+export { default as LineSettingsDialog } from './components/LineSettingsDialog';
 
 // Types
 export type { OHLCVBar, ChartLine, ChartTrade, PriceBand, ChartTheme, IndicatorSettings, IndicatorPanel } from './types/chart';

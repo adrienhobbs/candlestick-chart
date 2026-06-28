@@ -225,8 +225,10 @@ const bars: OHLCVBar[] = [
 | `lines` | `ChartLine[]` | `[]` | Array of price lines to draw |
 | `onBarUpdate` | `(bar: OHLCVBar) => void` | - | Callback when current bar updates |
 | `onNewBar` | `(bar: OHLCVBar) => void` | - | Callback when new bar is created |
-| `onDeleteLine` | `(lineId: string) => void` | - | Callback when line delete button is clicked |
-| `onAddLine` | `(type, price) => void` | - | Callback when line is added from context menu |
+| `onDeleteLine` | `(lineId: string) => void` | - | Callback when a line's delete button is clicked |
+| `onAddLine` | `(type, price) => void` | - | Built-in menu: add a typed line at the price (see [Context Menu](#context-menu)) |
+| `onClearAllLines` | `() => void` | - | Built-in menu: clear all lines |
+| `contextMenuItems` | `({ price }) => ContextMenuItem[]` | - | Replace the built-in menu with your own items (see [Context Menu](#context-menu)) |
 | `enableBarSelection` | `boolean` | `true` | Enable/disable bar selection feature |
 | `onBarClick` | `(bar: OHLCVBar \| null) => void` | - | Callback when bar is clicked or deselected |
 | `selectedBarTime` | `number \| null` | uncontrolled | Externally control the selected bar (spotlight) by ms timestamp — lets a parent move the selection (e.g. arrow keys). See [Bar Selection](#bar-selection) |
@@ -427,44 +429,74 @@ Each line has a delete button (red × icon) positioned on the right side of the 
 
 ### Context Menu
 
-Right-click on the chart to open a context menu for adding price lines.
+Right-click on the chart to open a context menu for adding price lines. The menu
+appears only when `onAddLine` or `onClearAllLines` is wired, and it reads the same
+`--ck-*` CSS variables as the modals (see [Theming](./theming.md)).
 
 #### Features
 
-- Shows the exact price at cursor position
-- Add Entry Line
-- Add Stop Loss
-- Add Take Profit
+- Shows the exact price at the cursor position
+- Add **Entry / Stop Loss / Take Profit / Support / Resistance** line at that price
+  (`onAddLine(type, price)` — `type` is one of those five)
+- **Clear All Lines** (`onClearAllLines`)
+- Per-line delete buttons (`onDeleteLine(id)`) when `onDeleteLine` is provided
 
 #### Implementation
 
 ```typescript
+const COLORS = {
+  entry: '#9ca3af', stopLoss: '#ef4444', takeProfit: '#22c55e',
+  support: '#3b82f6', resistance: '#f59e0b',
+};
+
 const handleAddLine = (
-  type: 'entry' | 'stopLoss' | 'takeProfit',
-  price: number
+  type: 'entry' | 'stopLoss' | 'takeProfit' | 'support' | 'resistance',
+  price: number,
 ) => {
-  console.log(`Adding ${type} line at ${price}`);
-
-  const colors = {
-    entry: '#3b82f6',
-    stopLoss: '#ef4444',
-    takeProfit: '#10b981',
-  };
-
-  const newLine: ChartLine = {
-    id: `${type}-${Date.now()}`,
-    price,
-    color: colors[type],
-    title: type.replace(/([A-Z])/g, ' $1').trim(),
-  };
-
-  setLines(prev => [...prev, newLine]);
+  setLines((prev) => [
+    ...prev,
+    { id: `${type}-${Date.now()}`, price, color: COLORS[type], title: type },
+  ]);
 };
 
 <ChartComponent
   bars={bars}
   lines={lines}
   onAddLine={handleAddLine}
+  onDeleteLine={(id) => setLines((prev) => prev.filter((l) => l.id !== id))}
+  onClearAllLines={() => setLines([])}
+/>
+```
+
+#### Custom menu items (`contextMenuItems`)
+
+The built-in five-type menu is just a default. Pass `contextMenuItems` to define the
+menu yourself — candlekit still renders the themed/positioned menu (with the price
+header); you supply the actions. This is how you offer e.g. a single **"Add
+horizontal line"** and own the line's styling.
+
+```tsx
+<ChartComponent
+  contextMenuItems={({ price }) => [
+    { label: 'Add horizontal line', onSelect: () => setEditingLine({ id: nextId(), price, color: '#3b82f6' }) },
+    ...(lines.length ? [{ label: 'Clear all', danger: true, onSelect: () => setLines([]) }] : []),
+  ]}
+  onDeleteLine={(id) => setLines((p) => p.filter((l) => l.id !== id))}
+/>
+```
+
+Pair it with **`LineSettingsDialog`** — a themed editor (the line-drawing parallel
+to `SettingsDialog`) for a line's label / color / style / width:
+
+```tsx
+import { LineSettingsDialog } from '@adrienhobbs/candlekit';
+
+<LineSettingsDialog
+  isOpen={editingLine != null}
+  line={editingLine}
+  title="Add Line"
+  onClose={() => setEditingLine(null)}
+  onSave={(line) => { upsertLine(line); setEditingLine(null); }}
 />
 ```
 

@@ -26,6 +26,14 @@ import { indicatorCalculator } from '../indicators/core/calculator';
 import { BandsPrimitive } from '../indicators/primitives/BandsPrimitive';
 import { buildTradeMarkers } from './trade-markers';
 
+/** An item in the chart's right-click context menu (see `contextMenuItems`). */
+export interface ContextMenuItem {
+  label: string;
+  onSelect: () => void;
+  /** Render in a destructive style (e.g. a "Clear all" action). */
+  danger?: boolean;
+}
+
 interface ChartComponentProps {
   bars: OHLCVBar[];
   onLoadMoreData?: (oldestTimestamp: number) => void;
@@ -36,6 +44,14 @@ interface ChartComponentProps {
   onDeleteLine?: (lineId: string) => void;
   onAddLine?: (type: 'entry' | 'stopLoss' | 'takeProfit' | 'support' | 'resistance', price: number) => void;
   onClearAllLines?: () => void;
+  /**
+   * Customize the right-click menu items. Receives the clicked `price`; return the
+   * items to show. When provided, this replaces the built-in (entry/stop/take-profit/
+   * support/resistance + clear) menu — letting a host show e.g. a single
+   * "Add horizontal line" and own the line styling. The menu still appears only when
+   * the menu would otherwise be enabled (an `onAddLine`/`onClearAllLines`/this prop).
+   */
+  contextMenuItems?: (args: { price: number }) => ContextMenuItem[];
   enableBarSelection?: boolean;
   onBarClick?: (bar: OHLCVBar | null) => void;
   /**
@@ -120,6 +136,7 @@ export default function ChartComponent({
   onDeleteLine,
   onAddLine,
   onClearAllLines,
+  contextMenuItems,
   enableBarSelection = true,
   onBarClick,
   selectedBarTime,
@@ -205,7 +222,7 @@ export default function ChartComponent({
   // contextmenu closure without going stale. (Delete buttons gate on
   // `onDeleteLine` directly at render.)
   const lineEditEnabledRef = useRef(false);
-  lineEditEnabledRef.current = Boolean(onAddLine || onClearAllLines);
+  lineEditEnabledRef.current = Boolean(onAddLine || onClearAllLines || contextMenuItems);
 
 
   useEffect(() => {
@@ -1121,53 +1138,75 @@ export default function ChartComponent({
 
       {contextMenu && (
         <div
-          className="absolute bg-slate-800 border border-slate-600 rounded-lg shadow-xl z-30 py-1 min-w-[180px]"
+          className="absolute z-30 min-w-[180px] rounded-[var(--ck-radius,0.5rem)] border border-[var(--ck-border,#334155)] bg-[var(--ck-surface,#1e293b)] py-1 shadow-xl"
           style={{
             left: `${contextMenu.x}px`,
             top: `${contextMenu.y}px`,
+            fontFamily: 'var(--ck-font, inherit)',
           }}
         >
-          <div className="px-3 py-1 text-xs text-slate-400 border-b border-slate-600">
+          <div className="border-b border-[var(--ck-border,#334155)] px-3 py-1 text-xs text-[var(--ck-text-muted,#94a3b8)]">
             Price: {contextMenu.price.toFixed(3)}
           </div>
-          <button
-            onClick={() => handleAddLineFromContext('entry')}
-            className="w-full px-3 py-2 text-left text-sm text-slate-200 hover:bg-slate-700 transition-colors"
-          >
-            Add Entry Line
-          </button>
-          <button
-            onClick={() => handleAddLineFromContext('stopLoss')}
-            className="w-full px-3 py-2 text-left text-sm text-slate-200 hover:bg-slate-700 transition-colors"
-          >
-            Add Stop Loss
-          </button>
-          <button
-            onClick={() => handleAddLineFromContext('takeProfit')}
-            className="w-full px-3 py-2 text-left text-sm text-slate-200 hover:bg-slate-700 transition-colors"
-          >
-            Add Take Profit
-          </button>
-          <div className="border-t border-slate-600 my-1"></div>
-          <button
-            onClick={() => handleAddLineFromContext('support')}
-            className="w-full px-3 py-2 text-left text-sm text-slate-200 hover:bg-slate-700 transition-colors"
-          >
-            Add Support Line
-          </button>
-          <button
-            onClick={() => handleAddLineFromContext('resistance')}
-            className="w-full px-3 py-2 text-left text-sm text-slate-200 hover:bg-slate-700 transition-colors"
-          >
-            Add Resistance Line
-          </button>
-          <div className="border-t border-slate-600 my-1"></div>
-          <button
-            onClick={handleClearAllLines}
-            className="w-full px-3 py-2 text-left text-sm text-red-400 hover:bg-slate-700 transition-colors"
-          >
-            Clear All Lines
-          </button>
+          {contextMenuItems ? (
+            // Host-defined items.
+            contextMenuItems({ price: contextMenu.price }).map((item, i) => (
+              <button
+                key={i}
+                onClick={() => {
+                  item.onSelect();
+                  setContextMenu(null);
+                }}
+                className={`w-full px-3 py-2 text-left text-sm transition-colors hover:bg-[var(--ck-surface-hover,#475569)] ${
+                  item.danger ? 'text-red-400' : 'text-[var(--ck-text,#f1f5f9)]'
+                }`}
+              >
+                {item.label}
+              </button>
+            ))
+          ) : (
+            // Built-in default menu.
+            <>
+              <button
+                onClick={() => handleAddLineFromContext('entry')}
+                className="w-full px-3 py-2 text-left text-sm text-[var(--ck-text,#f1f5f9)] hover:bg-[var(--ck-surface-hover,#475569)] transition-colors"
+              >
+                Add Entry Line
+              </button>
+              <button
+                onClick={() => handleAddLineFromContext('stopLoss')}
+                className="w-full px-3 py-2 text-left text-sm text-[var(--ck-text,#f1f5f9)] hover:bg-[var(--ck-surface-hover,#475569)] transition-colors"
+              >
+                Add Stop Loss
+              </button>
+              <button
+                onClick={() => handleAddLineFromContext('takeProfit')}
+                className="w-full px-3 py-2 text-left text-sm text-[var(--ck-text,#f1f5f9)] hover:bg-[var(--ck-surface-hover,#475569)] transition-colors"
+              >
+                Add Take Profit
+              </button>
+              <div className="border-t border-[var(--ck-border,#334155)] my-1"></div>
+              <button
+                onClick={() => handleAddLineFromContext('support')}
+                className="w-full px-3 py-2 text-left text-sm text-[var(--ck-text,#f1f5f9)] hover:bg-[var(--ck-surface-hover,#475569)] transition-colors"
+              >
+                Add Support Line
+              </button>
+              <button
+                onClick={() => handleAddLineFromContext('resistance')}
+                className="w-full px-3 py-2 text-left text-sm text-[var(--ck-text,#f1f5f9)] hover:bg-[var(--ck-surface-hover,#475569)] transition-colors"
+              >
+                Add Resistance Line
+              </button>
+              <div className="border-t border-[var(--ck-border,#334155)] my-1"></div>
+              <button
+                onClick={handleClearAllLines}
+                className="w-full px-3 py-2 text-left text-sm text-red-400 hover:bg-[var(--ck-surface-hover,#475569)] transition-colors"
+              >
+                Clear All Lines
+              </button>
+            </>
+          )}
         </div>
       )}
     </div>

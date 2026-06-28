@@ -98,11 +98,13 @@ function ThemedChart(props) {
 
 ## 2. Modals & popups — `--ck-*` CSS variables
 
-The indicator browser (`IndicatorBrowser`) and settings dialog (`SettingsDialog`,
-including the settings form) read these CSS custom properties, each with the prior
-slate value as a fallback. Set them anywhere that's an ancestor of the modals
-(`:root` is simplest — the modals render via `fixed` overlays and inherit from the
-document) and they follow your theme, including a `data-theme` switch.
+The indicator browser (`IndicatorBrowser`), the settings dialogs (`SettingsDialog`
++ its form, and `LineSettingsDialog`), and the chart's right-click line **context
+menu** read these CSS custom properties, each with the prior slate value as a
+fallback. Set them
+anywhere that's an ancestor (`:root` is simplest — these render via `fixed`/absolute
+overlays and inherit from the document) and they follow your theme, including a
+`data-theme` switch.
 
 | Variable | Default | Used for |
 |----------|---------|----------|
