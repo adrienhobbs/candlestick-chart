@@ -38,6 +38,13 @@ interface ChartComponentProps {
   onClearAllLines?: () => void;
   enableBarSelection?: boolean;
   onBarClick?: (bar: OHLCVBar | null) => void;
+  /**
+   * Externally control the selected bar (the spotlight) by ms timestamp. When
+   * provided (incl. `null`), bar selection becomes controlled: clicks still fire
+   * `onBarClick`, but the highlight follows this prop — so a parent can move the
+   * selection (e.g. arrow keys). Omit for the default click-toggle behavior.
+   */
+  selectedBarTime?: number | null;
   trades?: ChartTrade[];
   selectedTradeId?: string | null;
   renderTradePopup?: (trade: ChartTrade) => ReactNode;
@@ -115,6 +122,7 @@ export default function ChartComponent({
   onClearAllLines,
   enableBarSelection = true,
   onBarClick,
+  selectedBarTime,
   trades = [],
   selectedTradeId = null,
   renderTradePopup,
@@ -149,6 +157,24 @@ export default function ChartComponent({
   const [bandRects, setBandRects] = useState<Array<{ id: string; top: number; height: number; color: string }>>([]);
   const [selectedBar, setSelectedBar] = useState<OHLCVBar | null>(null);
   const selectedBarRef = useRef<OHLCVBar | null>(null);
+  // Bar selection is "controlled" when `selectedBarTime` is passed — the click
+  // handler then only notifies (via onBarClick) and lets the prop drive the
+  // highlight. Read via ref inside the create-once click closure.
+  const barSelectionControlled = selectedBarTime !== undefined;
+  const barSelectionControlledRef = useRef(barSelectionControlled);
+  barSelectionControlledRef.current = barSelectionControlled;
+
+  // Controlled bar selection: mirror `selectedBarTime` into selectedBar (the
+  // spotlight + selection marker follow it).
+  useEffect(() => {
+    if (!barSelectionControlled) return;
+    const bar =
+      selectedBarTime == null
+        ? null
+        : barsRef.current.find((b) => b.timestamp === selectedBarTime) ?? null;
+    selectedBarRef.current = bar;
+    setSelectedBar(bar);
+  }, [selectedBarTime, barSelectionControlled, bars]);
 
   // Size the volume pane to a small fraction of the chart so price action stays
   // dominant. Absolute px (this lightweight-charts build has no stretch factors),
@@ -378,8 +404,10 @@ export default function ChartComponent({
       });
 
       if (clickedBar) {
-
-        if (selectedBarRef.current && selectedBarRef.current.timestamp === clickedBar.timestamp) {
+        if (barSelectionControlledRef.current) {
+          // Controlled: let the parent drive the highlight via `selectedBarTime`.
+          if (onBarClick) onBarClick(clickedBar);
+        } else if (selectedBarRef.current && selectedBarRef.current.timestamp === clickedBar.timestamp) {
           selectedBarRef.current = null;
           setSelectedBar(null);
           setSpotlightPosition(null);
@@ -970,18 +998,26 @@ export default function ChartComponent({
     };
   }, [selectedBar, enableBarSelection, bars.length]);
 
-  const selectedTrade = trades.find((t) => t.id === selectedTradeId) ?? null;
+  // The popup follows the selected bar: it shows for the trade whose span
+  // [entry, exit] contains the bar — so every bar of a trade shows it (anchored at
+  // the bar), and a bar outside all trades shows none.
+  const popupInfo = useMemo(() => {
+    if (!selectedBar) return null;
+    const ts = selectedBar.timestamp;
+    const owner = trades.find((t) => ts >= t.entryTime && ts <= t.exitTime);
+    return owner ? { trade: owner, time: ts } : null;
+  }, [selectedBar, trades]);
 
   useEffect(() => {
-    if (!chartRef.current || !selectedTrade) {
+    if (!chartRef.current || !popupInfo) {
       setTradePopupPos(null);
       return;
     }
 
     const updateTradePopupPos = () => {
-      if (!chartRef.current || !selectedTrade || !chartContainerRef.current) return;
+      if (!chartRef.current || !popupInfo || !chartContainerRef.current) return;
       const timeScale = chartRef.current.timeScale();
-      const x = timeScale.timeToCoordinate((selectedTrade.entryTime / 1000) as Time);
+      const x = timeScale.timeToCoordinate((popupInfo.time / 1000) as Time);
       // Hide when the bar is off-screen: timeToCoordinate returns null once it leaves the
       // logical range, but a bar just past the edge returns an out-of-bounds coordinate —
       // bound to [0, width] so the popup never peeks regardless of container overflow.
@@ -997,7 +1033,7 @@ export default function ChartComponent({
         chartRef.current.timeScale().unsubscribeVisibleLogicalRangeChange(updateTradePopupPos);
       }
     };
-  }, [selectedTrade, selectedTrade?.entryTime]);
+  }, [popupInfo]);
 
   const handleDeleteLine = (lineId: string) => {
     if (onDeleteLine) {
@@ -1050,12 +1086,12 @@ export default function ChartComponent({
           />
         )}
 
-        {selectedTrade && tradePopupPos && renderTradePopup && (
+        {popupInfo && tradePopupPos && renderTradePopup && (
           <div
             className="absolute z-20 pointer-events-auto"
             style={{ left: `${tradePopupPos.x}px`, top: 8, transform: 'translateX(-50%)' }}
           >
-            {renderTradePopup(selectedTrade)}
+            {renderTradePopup(popupInfo.trade)}
           </div>
         )}
       </div>
