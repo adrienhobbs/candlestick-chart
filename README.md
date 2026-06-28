@@ -6,11 +6,13 @@ A powerful, provider-agnostic trading chart built on TradingView's Lightweight C
 
 ### Chart Visualization
 - Real-time candlestick charts with volume
-- Technical indicators (SMA, EMA, RSI, Bollinger Bands, VWAP)
+- Technical indicators (SMA, EMA, RSI, MACD, Bollinger Bands, VWAP, …)
 - Interactive price lines for entry/exit levels
-- Bar selection and inspection
+- Trade markers (entry/exit, win/loss colored) with a details popup
+- Bar selection and inspection (clickable or externally controlled)
 - Infinite scroll for historical data
 - Context menu for quick actions
+- Theming for the chart canvas and modals (see [docs/theming.md](./docs/theming.md))
 
 ### Data Management
 - Provider-agnostic architecture (works with any data source)

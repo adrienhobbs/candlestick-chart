@@ -209,24 +209,53 @@ renderConfig: {
 }
 ```
 
-### Multiple Lines
-For indicators like Bollinger Bands with multiple lines:
+### Multiple Outputs
+
+A `calculate` that returns extra fields per point renders as multiple series.
+There are two flavours:
+
+**Band fill** (Bollinger, Keltner, Donchian) — an upper/middle/lower band with a
+shaded fill between the bounds. Set `hasBandFill` + `fillBands`:
+
 ```typescript
 renderConfig: {
   seriesType: ChartSeriesType.LINE,
-  outputCount: 3,  // Will create 3 separate lines
+  outputCount: 3,
+  hasBandFill: true,
+  fillBands: { upper: 'upper', lower: 'lower' },  // field names on each point
 }
 
-// In calculate function, return data with multiple values:
-calculate: (bars, settings) => {
-  return bars.map((bar, i) => ({
-    time: bar.timestamp,
-    value: middleValue,   // Main value
-    upper: upperValue,    // Additional line
-    lower: lowerValue,    // Additional line
-  }));
-}
+calculate: (bars, settings) => bars.map((bar, i) => ({
+  time: bar.timestamp,
+  value: middleValue,   // the middle line
+  upper: upperValue,
+  lower: lowerValue,
+}));
 ```
+
+**Generic multi-output** (MACD, Stochastic, StochRSI, …) — `outputCount > 1` with
+**no** band fill. Each output field becomes its own series: a field literally named
+`histogram` renders as a histogram, every other field as a line. Per-field color
+comes from a `<field>Color` setting (the primary `value` uses `color`), else a
+palette. Pair with `overlay: false` to draw it in a separate pane below price.
+
+```typescript
+renderConfig: {
+  seriesType: ChartSeriesType.LINE,
+  outputCount: 3,
+  overlay: false,        // separate pane
+}
+
+calculate: (bars, settings) => bars.map((bar, i) => ({
+  time: bar.timestamp,
+  value: macdValue,      // line  (uses settings.color)
+  signal: signalValue,   // line  (uses settings.signalColor)
+  histogram: histValue,  // histogram (uses settings.histogramColor)
+}));
+```
+
+> Warm-up bars should emit `NaN` for a field; non-finite values are dropped before
+> rendering.
 
 ## Calculation Function
 

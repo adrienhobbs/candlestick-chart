@@ -30,9 +30,11 @@ ChartComponent is a pure presentation component for displaying candlestick chart
 - **Volume Display**: Integrated volume histogram below the price chart
 - **Technical Indicators**: Support for overlay and separate pane indicators
 - **Price Lines**: Draw entry, stop loss, and take profit lines
-- **Bar Selection**: Click to select and inspect individual bars
+- **Trade Markers & Popup**: Mark trades (entry/exit, win/loss colored) with a details popup
+- **Bar Selection**: Click — or control externally (e.g. arrow keys) — to select and inspect bars
 - **Infinite Scroll**: Load historical data as users scroll back in time
 - **Context Menu**: Right-click to add price lines at specific levels
+- **Theming**: Theme the chart canvas (`theme` prop) and modals (`--ck-*` CSS vars)
 - **Provider Agnostic**: Works with any data source and persistence layer
 
 ### When to Use
@@ -227,9 +229,11 @@ const bars: OHLCVBar[] = [
 | `onAddLine` | `(type, price) => void` | - | Callback when line is added from context menu |
 | `enableBarSelection` | `boolean` | `true` | Enable/disable bar selection feature |
 | `onBarClick` | `(bar: OHLCVBar \| null) => void` | - | Callback when bar is clicked or deselected |
+| `selectedBarTime` | `number \| null` | uncontrolled | Externally control the selected bar (spotlight) by ms timestamp — lets a parent move the selection (e.g. arrow keys). See [Bar Selection](#bar-selection) |
 | `trades` | `ChartTrade[]` | `[]` | Trades to mark on the chart (entry/exit arrows, colored by win/loss) |
 | `selectedTradeId` | `string \| null` | `null` | Highlights + labels the matching trade's markers |
 | `focusTradeId` | `string \| null` | `null` | Scrolls/frames the matching trade into view |
+| `renderTradePopup` | `(trade: ChartTrade) => ReactNode` | - | Render a popup for the trade under the selected bar. See [Trade Markers & Popup](#trade-markers--popup) |
 | `priceBands` | `PriceBand[]` | `[]` | Shaded horizontal price bands (e.g. an MFE↔MAE zone) |
 | `timeZone` | `string` | viewer local | IANA timezone for axis ticks + crosshair labels |
 | `height` | `number` | auto-fill | Fixed chart height in px (omit to fill the container) |
@@ -334,6 +338,35 @@ const handleBarClick = (bar: OHLCVBar | null) => {
 />
 ```
 
+#### Controlled Selection (`selectedBarTime`)
+
+By default the selection is **uncontrolled** — clicking toggles it internally.
+Pass `selectedBarTime` (a ms timestamp, or `null`) to make it **controlled**: the
+spotlight follows the prop, while clicks still fire `onBarClick` so you can update
+it. This lets a parent move the selection — e.g. with arrow keys:
+
+```tsx
+const [selectedBarTime, setSelectedBarTime] = useState<number | null>(bars.at(-1)?.timestamp ?? null);
+
+// arrow keys step the selection one bar at a time
+useEffect(() => {
+  const onKey = (e: KeyboardEvent) => {
+    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+    const i = bars.findIndex((b) => b.timestamp === selectedBarTime);
+    const j = Math.max(0, Math.min(bars.length - 1, i + (e.key === 'ArrowRight' ? 1 : -1)));
+    setSelectedBarTime(bars[j].timestamp);
+  };
+  window.addEventListener('keydown', onKey);
+  return () => window.removeEventListener('keydown', onKey);
+}, [bars, selectedBarTime]);
+
+<ChartComponent
+  bars={bars}
+  selectedBarTime={selectedBarTime}
+  onBarClick={(bar) => setSelectedBarTime(bar?.timestamp ?? null)}
+/>
+```
+
 ### Price Lines
 
 Draw horizontal lines on the chart for entry points, stop losses, and take profit levels.
@@ -435,6 +468,48 @@ const handleAddLine = (
 />
 ```
 
+### Trade Markers & Popup
+
+Pass `trades` to mark trades on the chart — each gets an entry (▲, belowBar) and
+exit (▼, aboveBar) marker, colored by `outcome` (`'win'`/`'loss'`). The win/loss
+colors follow the [`theme`](./theming.md)'s `upColor`/`downColor`.
+
+```typescript
+interface ChartTrade {
+  id: string;
+  entryTime: number;   // ms — must equal an entry bar's timestamp
+  exitTime: number;    // ms — must equal an exit bar's timestamp
+  entryPrice: number;
+  exitPrice: number;
+  outcome: 'win' | 'loss';
+}
+```
+
+- **`selectedTradeId`** — the matching trade's markers are emphasized and labeled
+  (`entry`/`exit` text).
+- **`focusTradeId`** — scrolls/frames the matching trade into view (pairs with
+  `selectedTradeId` to drive both selection and focus).
+- **`renderTradePopup`** — render a floating popup with trade details. The popup
+  follows the **selected bar** (see [Controlled Selection](#controlled-selection-selectedbartime)):
+  it shows for the trade whose span `[entryTime, exitTime]` contains the selected
+  bar — so **every bar of a trade** shows it (anchored at the bar), and a bar
+  outside all trades shows none.
+
+```tsx
+<ChartComponent
+  bars={bars}
+  trades={trades}
+  selectedTradeId={selectedId}
+  focusTradeId={selectedId}
+  selectedBarTime={selectedBarTime}
+  renderTradePopup={(trade) => (
+    <div className="trade-popup">
+      {trade.outcome} · entry {fmt(trade.entryTime)} · exit {fmt(trade.exitTime)}
+    </div>
+  )}
+/>
+```
+
 ### Indicators
 
 Display technical indicators on the chart. Indicators can be overlaid on the price chart or shown in separate panes below.
@@ -478,7 +553,8 @@ Volume is automatically displayed as a histogram at the bottom of the main chart
 - **Red**: Volume for down bars (close < open)
 - **Semi-transparent**: 50% opacity for better visibility
 
-The volume scale is configured to use 20% of the chart height (top 80% for price, bottom 20% for volume).
+Volume sits in its own pane below price, sized to a small fraction (~14%) of the
+chart height by default so price action dominates.
 
 ## Event Callbacks
 
