@@ -8,6 +8,8 @@ export { default as IndicatorBrowser } from './components/IndicatorBrowser';
 export { default as IndicatorSettingsForm } from './components/IndicatorSettingsForm';
 export { default as SettingsDialog } from './components/SettingsDialog';
 export { default as LineSettingsDialog } from './components/LineSettingsDialog';
+export { default as LineChart } from './components/LineChart';
+export type { LineChartSeries, LineChartProps } from './components/LineChart';
 
 // Types
 export type { OHLCVBar, ChartLine, ChartTrade, PriceBand, ChartTheme, IndicatorSettings, IndicatorPanel } from './types/chart';

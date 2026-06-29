@@ -12,7 +12,6 @@ import {
   IPriceLine,
   LineStyle,
   LineWidth,
-  ColorType,
   CandlestickSeries,
   HistogramSeries,
   LineSeries,
@@ -20,6 +19,7 @@ import {
   SeriesMarker,
 } from 'lightweight-charts';
 import { OHLCVBar, ChartLine, ChartTrade, PriceBand, ChartTheme } from '../types/chart';
+import { DEFAULT_CHART_THEME, buildBaseChartLayoutOptions } from '../utils/chartTheme';
 import { IndicatorInstance } from '../indicators/core/types';
 import { indicatorRegistry } from '../indicators/core/registry';
 import { indicatorCalculator } from '../indicators/core/calculator';
@@ -88,21 +88,6 @@ interface ChartComponentProps {
    */
   theme?: Partial<ChartTheme>;
 }
-
-// Library default chart theme (slate dark). Consumers override via the `theme` prop.
-const DEFAULT_CHART_THEME: ChartTheme = {
-  background: '#0f172a',
-  textColor: '#94a3b8',
-  fontFamily: undefined,
-  gridColor: '#1e293b',
-  axisBorderColor: '#334155',
-  crosshairColor: '#475569',
-  paneSeparatorColor: '#1e293b',
-  upColor: '#10b981',
-  downColor: '#ef4444',
-  volumeUpColor: '#10b98180',
-  volumeDownColor: '#ef444480',
-};
 
 // Palette for multi-output indicators whose fields lack an explicit color setting.
 const MULTI_LINE_PALETTE = ['#3b82f6', '#ef4444', '#10b981', '#f59e0b', '#a855f7', '#06b6d4'];
@@ -231,21 +216,9 @@ export default function ChartComponent({
     chartContainerRef.current.style.position = 'relative';
 
     const t = themeRef.current;
+    const base = buildBaseChartLayoutOptions(t);
     const chart = createChart(chartContainerRef.current, {
-      layout: {
-        background: { type: ColorType.Solid, color: t.background },
-        textColor: t.textColor,
-        ...(t.fontFamily ? { fontFamily: t.fontFamily } : {}),
-        panes: {
-          enableResize: true,
-          separatorColor: t.paneSeparatorColor,
-          separatorHoverColor: 'rgba(148,163,184,0.5)',
-        },
-      },
-      grid: {
-        vertLines: { color: t.gridColor },
-        horzLines: { color: t.gridColor },
-      },
+      ...base,
       // Render axis ticks + crosshair in `timeZone` (default: the viewer's local
       // timezone). lightweight-charts otherwise renders numeric times as UTC,
       // which mismatches local/exchange-time labels alongside the chart.
@@ -258,26 +231,10 @@ export default function ChartComponent({
       // ResizeObserver below corrects it on first measure).
       height: height ?? (chartContainerRef.current.clientHeight || 600),
       timeScale: {
+        ...base.timeScale,
         timeVisible: true,
         secondsVisible: true,
-        borderColor: t.axisBorderColor,
         tickMarkFormatter: makeTickMarkFormatter(timeZone),
-      },
-      rightPriceScale: {
-        borderColor: t.axisBorderColor,
-      },
-      crosshair: {
-        mode: 0,
-        vertLine: {
-          width: 1,
-          color: t.crosshairColor,
-          style: 3,
-        },
-        horzLine: {
-          width: 1,
-          color: t.crosshairColor,
-          style: 3,
-        },
       },
     });
 
@@ -502,24 +459,7 @@ export default function ChartComponent({
   useEffect(() => {
     const chart = chartRef.current;
     if (!chart) return;
-    chart.applyOptions({
-      layout: {
-        background: { type: ColorType.Solid, color: resolvedTheme.background },
-        textColor: resolvedTheme.textColor,
-        ...(resolvedTheme.fontFamily ? { fontFamily: resolvedTheme.fontFamily } : {}),
-        panes: { separatorColor: resolvedTheme.paneSeparatorColor },
-      },
-      grid: {
-        vertLines: { color: resolvedTheme.gridColor },
-        horzLines: { color: resolvedTheme.gridColor },
-      },
-      timeScale: { borderColor: resolvedTheme.axisBorderColor },
-      rightPriceScale: { borderColor: resolvedTheme.axisBorderColor },
-      crosshair: {
-        vertLine: { color: resolvedTheme.crosshairColor },
-        horzLine: { color: resolvedTheme.crosshairColor },
-      },
-    });
+    chart.applyOptions(buildBaseChartLayoutOptions(resolvedTheme));
     candlestickSeriesRef.current?.applyOptions({
       upColor: resolvedTheme.upColor,
       downColor: resolvedTheme.downColor,

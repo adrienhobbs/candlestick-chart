@@ -543,6 +543,55 @@ interface ChartTrade {
 />
 ```
 
+### LineChart — overlay multiple line series
+
+`LineChart` is a separate, lightweight component (not `ChartComponent`) for plotting
+several line series on **one shared pane** for comparison — e.g. per-split equity
+curves aligned at trade #0. Its x-axis is **ordinal, not time**: you pass `{ x, y }`
+where `x` is an index (trade #), and candlekit feeds the integer to lightweight-charts
+as the time field while overriding the tick/crosshair formatters to render the ordinal.
+(Don't convert `x` to real timestamps — the data has no time dimension.)
+
+```tsx
+import { LineChart, type LineChartSeries } from '@adrienhobbs/candlekit';
+
+const series: LineChartSeries[] = [
+  { id: 'discovery',  label: 'discovery',  color: '#3b82f6', data: discovery.map((y, x) => ({ x, y })) },
+  { id: 'validation', label: 'validation', color: '#f59e0b', data: validation.map((y, x) => ({ x, y })) },
+  { id: 'holdout',    label: 'holdout',    color: '#14b8a6', data: holdout.map((y, x) => ({ x, y })) },
+];
+
+<LineChart
+  series={series}
+  theme={chartTheme}                 // same ChartTheme as ChartComponent; candle fields ignored
+  height={220}
+  baseline={0}                       // dashed zero line, kept in view via autoscale
+  xTickFormatter={(x) => `#${x}`}
+  valueFormatter={(y) => `${y >= 0 ? '+' : ''}${y.toFixed(2)}R`}
+/>
+```
+
+| Prop | Type | Notes |
+|------|------|-------|
+| `series` | `LineChartSeries[]` | Overlaid on one pane; later entries draw on top. Series may differ in length (all start at x=0; a shorter one just ends earlier). |
+| `theme` | `Partial<ChartTheme>` | Reuses the [chart theme](./theming.md); candle/volume fields are ignored. Re-applied live. |
+| `height` | `number` | Fixed px; omit to fill the container (ResizeObserver). |
+| `baseline` | `number` | Dashed horizontal reference line (e.g. `0`), merged into the price range so it stays visible even when all curves are positive. |
+| `xTickFormatter` | `(x:number)=>string` | Axis ticks **and** crosshair label. Default `String(x)`. |
+| `valueFormatter` | `(y:number)=>string` | Price axis, legend, hover readout. Default `String(y)`. |
+| `showLegend` | `boolean` | Overlay legend (swatch + label + value); follows the crosshair, falls back to each series' final value. Default `true`. |
+
+```ts
+interface LineChartSeries {
+  id: string;                                 // stable identity (reconcile across renders)
+  label?: string;                             // legend text; falls back to id
+  color: string;
+  lineWidth?: number;                         // default 2
+  lineStyle?: 'solid' | 'dashed' | 'dotted';  // default 'solid'
+  data: { x: number; y: number }[];           // x = ordinal (ascending, unique); y = value
+}
+```
+
 ### Indicators
 
 Display technical indicators on the chart. Indicators can be overlaid on the price chart or shown in separate panes below.
