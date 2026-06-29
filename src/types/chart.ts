@@ -77,14 +77,11 @@ export interface ChartTheme {
   volumeDownColor: string;
 }
 
-export interface IndicatorSettings {
-  [key: string]: any;
-}
-
 export interface IndicatorPanel {
   id: string;
   name: string;
   type: 'line' | 'histogram' | 'area';
-  settings: IndicatorSettings;
-  data: any[];
+  /** Resolved setting values (keyed by setting name). */
+  settings: Record<string, unknown>;
+  data: unknown[];
 }

@@ -4,6 +4,7 @@ import {
   SeriesAttachedParameter,
   Time,
   IChartApi,
+  type LineData,
 } from 'lightweight-charts';
 
 export interface BandsPrimitiveOptions {
@@ -40,8 +41,8 @@ class AreaBetweenLinesPaneView {
 
     const timeScale = chart.timeScale();
 
-    const data1 = series1.data() as any[];
-    const data2 = series2.data() as any[];
+    const data1 = series1.data() as readonly LineData<Time>[];
+    const data2 = series2.data() as readonly LineData<Time>[];
 
     const points: BandPoint[] = [];
 
@@ -52,9 +53,13 @@ class AreaBetweenLinesPaneView {
       const d1 = data1[i];
       const d2 = data2[j];
 
-      if (d1.time < d2.time) {
+      // Bands are over UTCTimestamp line series; compare the ordinal/epoch number.
+      const t1 = d1.time as number;
+      const t2 = d2.time as number;
+
+      if (t1 < t2) {
         i++;
-      } else if (d1.time > d2.time) {
+      } else if (t1 > t2) {
         j++;
       } else {
         const x = timeScale.timeToCoordinate(d1.time);

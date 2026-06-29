@@ -3,8 +3,6 @@ import { OHLCVBar } from '../types/chart';
 import {
   appendBar as appendBarUtil,
   prependBars as prependBarsUtil,
-  updateBarInArray,
-  deduplicateBars,
   sortBars,
   validateAndNormalizeBars,
   updateCurrentBar as updateCurrentBarUtil,
@@ -18,6 +16,8 @@ export interface UseBarsDataOptions {
   autoFetch?: boolean;
   autoSubscribe?: boolean;
   limit?: number;
+  /** Emit verbose fetch/subscribe traces to the console. Default false. */
+  debug?: boolean;
 }
 
 export interface UseBarsDataReturn {
@@ -48,6 +48,7 @@ export function useBarsData(options: UseBarsDataOptions = {}): UseBarsDataReturn
     autoFetch = false,
     autoSubscribe = false,
     limit = 500,
+    debug = false,
   } = options;
 
   const [bars, setBarsState] = useState<OHLCVBar[]>([]);
@@ -59,6 +60,17 @@ export function useBarsData(options: UseBarsDataOptions = {}): UseBarsDataReturn
   const isMountedRef = useRef(true);
   const hasInitialFetchRef = useRef(false);
   const isFetchingRef = useRef(false);
+
+  // Debug logging gated behind the `debug` option (read via ref so the loggers
+  // keep a stable identity and don't churn the useCallback dep arrays below).
+  const debugRef = useRef(debug);
+  debugRef.current = debug;
+  const log = useCallback((...args: unknown[]) => {
+    if (debugRef.current) console.log(...args);
+  }, []);
+  const warn = useCallback((...args: unknown[]) => {
+    if (debugRef.current) console.warn(...args);
+  }, []);
 
   const setBars = useCallback((newBars: OHLCVBar[]) => {
     const validated = validateAndNormalizeBars(newBars);
@@ -100,12 +112,11 @@ export function useBarsData(options: UseBarsDataOptions = {}): UseBarsDataReturn
       }
 
       if (isFetchingRef.current) {
-        console.log('fetchHistorical: already fetching, skipping');
+        log('fetchHistorical: already fetching, skipping');
         return;
       }
 
-      console.log('fetchHistorical called, params:', params);
-      console.log('isMountedRef.current:', isMountedRef.current);
+      log('fetchHistorical called, params:', params, 'mounted:', isMountedRef.current);
       isFetchingRef.current = true;
       setLoading(true);
       setError(null);
@@ -119,54 +130,48 @@ export function useBarsData(options: UseBarsDataOptions = {}): UseBarsDataReturn
           after: params.after,
         };
 
-        console.log('Calling adapter.fetchHistoricalBars with:', fetchParams);
+        log('Calling adapter.fetchHistoricalBars with:', fetchParams);
         const data = await adapter.fetchHistoricalBars(fetchParams);
-        console.log('adapter.fetchHistoricalBars returned, data.length:', data.length);
+        log('adapter.fetchHistoricalBars returned, data.length:', data.length);
 
         if (isMountedRef.current) {
-          console.log('Component still mounted, processing data');
           const validated = validateAndNormalizeBars(data);
 
           if (params.before) {
-            console.log('Prepending bars (before param present)');
+            log('Prepending bars (before param present)');
             setBarsState(prev => prependBarsUtil(prev, validated));
           } else {
-            console.log('Setting initial bars (no before param)');
+            log('Setting initial bars (no before param)');
             const sorted = sortBars(validated);
             setBarsState(sorted);
           }
         } else {
-          console.log('Component unmounted, skipping data update');
+          log('Component unmounted, skipping data update');
         }
       } catch (err) {
-        console.log('Error caught:', err);
         if (isMountedRef.current) {
           const error = err instanceof Error ? err : new Error('Failed to fetch historical data');
           setError(error);
           console.error('Failed to fetch historical data:', error);
         }
       } finally {
-        console.log('Finally block executing, isMountedRef.current:', isMountedRef.current);
         isFetchingRef.current = false;
         if (isMountedRef.current) {
-          console.log('Setting loading to false');
           setLoading(false);
-        } else {
-          console.log('Skipping setLoading(false) - component unmounted');
         }
       }
     },
-    [adapter, symbol, timeframe, limit]
+    [adapter, symbol, timeframe, limit, log]
   );
 
   const subscribe = useCallback(() => {
     if (!adapter?.subscribeRealtime) {
-      console.warn('Adapter does not support real-time subscriptions');
+      warn('Adapter does not support real-time subscriptions');
       return;
     }
 
     if (subscriptionRef.current) {
-      console.warn('Already subscribed');
+      warn('Already subscribed');
       return;
     }
 
@@ -198,7 +203,7 @@ export function useBarsData(options: UseBarsDataOptions = {}): UseBarsDataReturn
         }
       },
     });
-  }, [adapter, symbol, appendBar, updateCurrentBar]);
+  }, [adapter, symbol, appendBar, updateCurrentBar, warn]);
 
   const unsubscribe = useCallback(() => {
     if (subscriptionRef.current) {
@@ -213,13 +218,13 @@ export function useBarsData(options: UseBarsDataOptions = {}): UseBarsDataReturn
   }, [fetchHistorical]);
 
   useEffect(() => {
-    console.log('useEffect[autoFetch] running, autoFetch:', autoFetch, 'adapter:', !!adapter, 'hasInitialFetch:', hasInitialFetchRef.current);
+    log('useEffect[autoFetch] running, autoFetch:', autoFetch, 'adapter:', !!adapter, 'hasInitialFetch:', hasInitialFetchRef.current);
     if (autoFetch && adapter && !hasInitialFetchRef.current) {
-      console.log('Calling fetchHistorical from useEffect (initial fetch)');
+      log('Calling fetchHistorical from useEffect (initial fetch)');
       hasInitialFetchRef.current = true;
       fetchHistorical();
     }
-  }, [autoFetch, adapter, fetchHistorical]);
+  }, [autoFetch, adapter, fetchHistorical, log]);
 
   useEffect(() => {
     if (autoSubscribe && adapter?.subscribeRealtime) {

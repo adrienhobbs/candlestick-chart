@@ -12,7 +12,9 @@ export { default as LineChart } from './components/LineChart';
 export type { LineChartSeries, LineChartProps } from './components/LineChart';
 
 // Types
-export type { OHLCVBar, ChartLine, ChartTrade, PriceBand, ChartTheme, IndicatorSettings, IndicatorPanel } from './types/chart';
+export type { OHLCVBar, ChartLine, ChartTrade, PriceBand, ChartTheme, IndicatorPanel } from './types/chart';
+// `IndicatorSettings` is exported via the indicators barrel below (the canonical
+// schema type — `Record<string, SettingField>`), so it's intentionally not re-exported here.
 
 // Hooks
 export { useChartAPI } from './hooks/useChartAPI';

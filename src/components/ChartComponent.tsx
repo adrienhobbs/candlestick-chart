@@ -39,8 +39,6 @@ interface ChartComponentProps {
   onLoadMoreData?: (oldestTimestamp: number) => void;
   indicators?: IndicatorInstance[];
   lines?: ChartLine[];
-  onBarUpdate?: (updatedBar: OHLCVBar) => void;
-  onNewBar?: (newBar: OHLCVBar) => void;
   onDeleteLine?: (lineId: string) => void;
   onAddLine?: (type: 'entry' | 'stopLoss' | 'takeProfit' | 'support' | 'resistance', price: number) => void;
   onClearAllLines?: () => void;
@@ -116,8 +114,6 @@ export default function ChartComponent({
   onLoadMoreData,
   indicators = [],
   lines = [],
-  onBarUpdate,
-  onNewBar,
   onDeleteLine,
   onAddLine,
   onClearAllLines,
@@ -866,7 +862,7 @@ export default function ChartComponent({
           const lineData = data
             .map(d => ({ time: d.time as Time, value: d.value }))
             .filter(d => Number.isFinite(d.value));
-          series.setData(lineData as any);
+          series.setData(lineData as LineData[]);
         }
       } else if (definition.renderConfig.hasBandFill && definition.renderConfig.fillBands) {
         const { upper: upperField, lower: lowerField } = definition.renderConfig.fillBands;
@@ -880,9 +876,9 @@ export default function ChartComponent({
           const middleData = data.map(d => ({ time: d.time as Time, value: d.value })).filter(d => !isNaN(d.value));
           const lowerData = data.map(d => ({ time: d.time as Time, value: d[lowerField] })).filter(d => !isNaN(d.value));
 
-          upperSeries.setData(upperData as any);
-          middleSeries.setData(middleData as any);
-          lowerSeries.setData(lowerData as any);
+          upperSeries.setData(upperData as LineData[]);
+          middleSeries.setData(middleData as LineData[]);
+          lowerSeries.setData(lowerData as LineData[]);
         }
       } else {
         // Generic multi-output indicator (mirrors the setup branch): refresh each
@@ -893,7 +889,7 @@ export default function ChartComponent({
           const points = data
             .map((d) => ({ time: d.time as Time, value: d[key] }))
             .filter((d) => Number.isFinite(d.value));
-          series.setData(points as any);
+          series.setData(points as LineData[]);
         });
       }
     });

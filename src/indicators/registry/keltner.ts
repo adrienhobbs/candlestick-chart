@@ -92,6 +92,8 @@ export const KeltnerChannelsIndicator: IndicatorDefinition = {
     const low = bars.map(bar => bar.low);
     const close = bars.map(bar => bar.close);
 
+    // `fast-technical-indicators` ships loose/incorrect types for keltnerchannel's
+    // options; the runtime shape below is correct, so cast at this 3rd-party boundary.
     const keltnerValues = keltnerchannel({
       high,
       low,
@@ -99,6 +101,7 @@ export const KeltnerChannelsIndicator: IndicatorDefinition = {
       period: settings.period,
       atrPeriod: settings.atrPeriod,
       multiplier: settings.atrMultiplier,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } as any);
 
     return bars.map((bar, i) => ({
