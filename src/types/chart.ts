@@ -17,6 +17,12 @@ export interface ChartLine {
   lineStyle?: 'solid' | 'dashed' | 'dotted';
   title?: string;
   type?: 'entry' | 'stopLoss' | 'takeProfit' | 'mfe' | 'mae';
+  /**
+   * Whether this line shows a delete button (when `onDeleteLine` is wired). Set
+   * `false` for derived/read-only lines (e.g. a trade overlay) so they can't be
+   * "deleted". Defaults to `true`.
+   */
+  deletable?: boolean;
 }
 
 /** A shaded horizontal price band (e.g. an MFE↔MAE excursion zone). */

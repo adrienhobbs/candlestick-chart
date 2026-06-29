@@ -384,6 +384,7 @@ interface ChartLine {
   lineStyle?: 'solid' | 'dashed' | 'dotted';
   title?: string;
   type?: 'entry' | 'stopLoss' | 'takeProfit';
+  deletable?: boolean;  // default true; set false to hide the delete button (read-only line)
 }
 ```
 
@@ -425,7 +426,7 @@ const addStopLoss = (price: number) => {
 
 #### Interactive Delete
 
-Each line has a delete button (red × icon) positioned on the right side of the chart. Click to remove the line.
+Each line has a delete button (red × icon) positioned on the right side of the chart. Click to remove the line. Set `deletable: false` on a line to hide its delete button — useful for derived/read-only lines (e.g. a trade overlay) that shouldn't be removed.
 
 ### Context Menu
 
@@ -1473,6 +1474,7 @@ interface ChartLine {
   lineStyle?: 'solid' | 'dashed' | 'dotted';    // Line style (default: 'solid')
   title?: string;                                // Label text
   type?: 'entry' | 'stopLoss' | 'takeProfit';   // Line type
+  deletable?: boolean;                           // Show delete button (default: true)
 }
 ```
 

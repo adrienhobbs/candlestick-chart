@@ -1114,6 +1114,7 @@ export default function ChartComponent({
       </div>
 
       {onDeleteLine && chartContainerRef.current && lines.map((line) => {
+        if (line.deletable === false) return null; // read-only line (e.g. a trade overlay)
         const pos = linePositions.get(line.id);
         if (!pos) return null;
 
