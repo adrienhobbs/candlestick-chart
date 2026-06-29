@@ -47,7 +47,7 @@ export class MockAdapter implements BarDataAdapter {
     return bars;
   }
 
-  subscribeRealtime(symbol: string, handlers: RealtimeHandlers): RealtimeSubscription {
+  subscribeRealtime(_symbol: string, handlers: RealtimeHandlers): RealtimeSubscription {
     handlers.onConnect?.();
 
     let lastPrice = 100;

@@ -6,7 +6,6 @@ import {
   RealtimeHandlers,
   RealtimeSubscription,
 } from './types';
-import { normalizeTimestamp, validateAndNormalizeBars } from '../utils/barUtils';
 
 interface AlpacaBar {
   t: string;
@@ -58,7 +57,6 @@ export class AlpacaBarAdapter implements BarDataAdapter {
   private reconnectDelay = 1000;
   private currentHandlers: RealtimeHandlers | null = null;
   private currentSymbol: string | null = null;
-  private authenticated = false;
 
   constructor(options: BarDataAdapterOptions) {
     if (!options.apiKey || !options.secretKey) {
@@ -139,7 +137,6 @@ export class AlpacaBarAdapter implements BarDataAdapter {
 
       this.ws.onopen = () => {
         console.log('Alpaca WebSocket connected');
-        this.authenticated = false;
         this.authenticate();
       };
 
@@ -154,7 +151,6 @@ export class AlpacaBarAdapter implements BarDataAdapter {
 
       this.ws.onclose = () => {
         console.log('Alpaca WebSocket closed');
-        this.authenticated = false;
         this.currentHandlers?.onDisconnect?.();
         this.attemptReconnect();
       };
@@ -203,7 +199,6 @@ export class AlpacaBarAdapter implements BarDataAdapter {
       for (const message of messages) {
         if (message.T === 'success' && message.msg === 'authenticated') {
           console.log('Alpaca WebSocket authenticated');
-          this.authenticated = true;
           this.reconnectAttempts = 0;
           this.currentHandlers?.onConnect?.();
           this.subscribe();
@@ -270,7 +265,6 @@ export class AlpacaBarAdapter implements BarDataAdapter {
       this.ws.close();
       this.ws = null;
     }
-    this.authenticated = false;
     this.currentSymbol = null;
     this.currentHandlers = null;
     this.reconnectAttempts = 0;

@@ -50,13 +50,6 @@ export function useRealtimeUpdates(
     });
   }, []);
 
-  const generateRealisticPriceMove = useCallback((currentPrice: number): number => {
-    const volatility = 0.0005;
-    const drift = 0;
-    const change = currentPrice * (drift + volatility * (Math.random() * 2 - 1));
-    return currentPrice + change;
-  }, []);
-
   useEffect(() => {
     if (!initializedRef.current && initialBars.length > 0) {
       setBars(initialBars);

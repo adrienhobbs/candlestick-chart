@@ -34,7 +34,6 @@ export function calculateEMA(bars: OHLCVBar[], period: number): number[] {
   const multiplier = 2 / (period + 1);
 
   let ema = 0;
-  let hasStarted = false;
 
   for (let i = 0; i < bars.length; i++) {
     if (i < period - 1) {
@@ -46,7 +45,6 @@ export function calculateEMA(bars: OHLCVBar[], period: number): number[] {
       }
       ema = sum / period;
       result.push(ema);
-      hasStarted = true;
     } else {
       ema = (bars[i].close - ema) * multiplier + ema;
       result.push(ema);

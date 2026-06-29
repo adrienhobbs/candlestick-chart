@@ -45,14 +45,14 @@ export class LocalStoragePersistenceAdapter implements PersistenceAdapter {
 }
 
 export class NoOpPersistenceAdapter implements PersistenceAdapter {
-  async saveIndicators(indicators: IndicatorInstance[]): Promise<void> {
+  async saveIndicators(_indicators: IndicatorInstance[]): Promise<void> {
   }
 
   async loadIndicators(): Promise<IndicatorInstance[]> {
     return [];
   }
 
-  async deleteIndicator(id: string): Promise<void> {
+  async deleteIndicator(_id: string): Promise<void> {
   }
 }
 
