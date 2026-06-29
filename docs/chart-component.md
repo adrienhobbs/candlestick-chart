@@ -638,6 +638,60 @@ Volume is automatically displayed as a histogram at the bottom of the main chart
 Volume sits in its own pane below price, sized to a small fraction (~14%) of the
 chart height by default so price action dominates.
 
+### Session shading + day separators
+
+Pass `sessions` to shade trading sessions (pre-market / RTH / after-hours) behind the
+candles and draw a thin separator at each day boundary. `true` uses the US-equity preset
+(ET; pre-market + after-hours dimmed, RTH clear); pass a `SessionsConfig` for custom
+sessions, timezone, or colors; omit/`false` to disable.
+
+```tsx
+import { ChartComponent, US_EQUITY_PRESET, type SessionsConfig } from '@adrienhobbs/candlekit';
+
+<ChartComponent bars={bars} sessions />            {/* US-equity preset */}
+
+const custom: SessionsConfig = {                    // or fully custom
+  timeZone: 'America/New_York',
+  sessions: [
+    { name: 'pre',  startMinutes: 240, endMinutes: 570, color: 'rgba(128,128,128,0.10)' },
+    { name: 'rth',  startMinutes: 570, endMinutes: 960, color: 'transparent' },
+    { name: 'post', startMinutes: 960, endMinutes: 1200, color: 'rgba(128,128,128,0.10)' },
+  ],
+  separatorColor: 'rgba(128,128,128,0.25)',
+  separatorWidthPx: 1,
+};
+<ChartComponent bars={bars} sessions={custom} />
+```
+
+- `startMinutes`/`endMinutes` are minutes-from-midnight **in `timeZone`** (09:30 = 570);
+  inclusive start, exclusive end. DST is handled automatically.
+- `color: 'transparent'` leaves a session unshaded (e.g. RTH). Omit `separatorColor` to hide day separators.
+- Drawn by a canvas `ISeriesPrimitive`: shading sits behind the candles, separators in front.
+  Memoize a config object so the live primitive isn't re-applied each render.
+
+### Crosshair OHLC legend
+
+`showOhlcLegend` shows a top-left legend that follows the crosshair: O/H/L/C, change (abs + %),
+volume, and each active indicator's value at the hovered bar (idle shows the last bar). Style it
+yourself with `renderOhlcLegend`.
+
+```tsx
+<ChartComponent bars={bars} indicators={indicators} showOhlcLegend />
+
+// or a custom legend (full control over markup/styling):
+<ChartComponent
+  bars={bars}
+  renderOhlcLegend={(d) => (
+    <div className="my-legend">
+      {d.close} ({d.changePct.toFixed(2)}%) · vol {d.volume}
+      {d.indicators.map((i) => <span key={i.label} style={{ color: i.color }}>{i.label} {i.value}</span>)}
+    </div>
+  )}
+/>
+```
+
+`OhlcLegendData` = `{ time, open, high, low, close, volume, changeAbs, changePct, indicators: { label, color, value }[] }`.
+
 ## Event Callbacks
 
 ### Data Loading

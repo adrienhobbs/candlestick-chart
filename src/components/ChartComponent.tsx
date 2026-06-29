@@ -14,6 +14,11 @@ import { useIndicatorSeries } from './chart-hooks/useIndicatorSeries';
 import { useTradeMarkers } from './chart-hooks/useTradeMarkers';
 import { useSpotlight } from './chart-hooks/useSpotlight';
 import { usePopupPosition } from './chart-hooks/usePopupPosition';
+import { useSessions } from './chart-hooks/useSessions';
+import { US_EQUITY_PRESET, type SessionsConfig } from '../sessions/sessions';
+import { useOhlcLegend } from './chart-hooks/useOhlcLegend';
+import OhlcLegend from './OhlcLegend';
+import type { OhlcLegendData } from './ohlcLegendData';
 
 /** An item in the chart's right-click context menu (see `contextMenuItems`). */
 export interface ContextMenuItem {
@@ -70,6 +75,21 @@ interface ChartComponentProps {
   /** Shaded horizontal price bands (e.g. an MFE↔MAE excursion zone). */
   priceBands?: PriceBand[];
   /**
+   * Session shading + day separators. `true` uses the US-equity preset (pre-market /
+   * after-hours dimmed, RTH clear, in ET); pass a {@link SessionsConfig} for custom
+   * sessions/timezone/colors; omit or `false` to disable. Memoize a config object so
+   * the live primitive isn't needlessly re-applied each render.
+   */
+  sessions?: SessionsConfig | boolean;
+  /**
+   * Show the crosshair OHLC legend (O/H/L/C/V + change% + active indicator values,
+   * following the cursor; idle shows the last bar). Default false. Style it yourself
+   * with `renderOhlcLegend`.
+   */
+  showOhlcLegend?: boolean;
+  /** Custom renderer for the crosshair OHLC legend (overrides the built-in default). */
+  renderOhlcLegend?: (data: OhlcLegendData) => ReactNode;
+  /**
    * Visual theme for the chart canvas (background, grid, axes, candles, volume).
    * A partial override of {@link DEFAULT_CHART_THEME}; re-applied live on change.
    */
@@ -95,6 +115,9 @@ export default function ChartComponent({
   focusTradeId = null,
   timeZone,
   priceBands = [],
+  sessions = false,
+  showOhlcLegend = false,
+  renderOhlcLegend,
   theme,
 }: ChartComponentProps) {
   // Merge the consumer's partial theme over the library default. `theme` should
@@ -260,6 +283,26 @@ export default function ChartComponent({
   // [effect 10] Shaded price bands.
   const bandRects = usePriceBands({ chartRef, candlestickSeriesRef, priceBands });
 
+  // [effects 10a + 10b] Session shading + day separators (custom canvas primitive).
+  const resolvedSessions = useMemo<SessionsConfig | null>(
+    () => (sessions === true ? US_EQUITY_PRESET : sessions ? sessions : null),
+    [sessions],
+  );
+  useSessions({ candlestickSeriesRef, config: resolvedSessions });
+
+  // [effect 10c] Crosshair OHLC legend (O/H/L/C/V + indicator values; idle = last bar).
+  const ohlcLegendEnabled = showOhlcLegend || renderOhlcLegend != null;
+  const ohlcLegend = useOhlcLegend({
+    enabled: ohlcLegendEnabled,
+    chartRef,
+    candlestickSeriesRef,
+    volumeSeriesRef,
+    indicatorSeriesRef,
+    barsRef,
+    bars,
+    indicators,
+  });
+
   // [effects 11 + 12] Indicator series setup + data refresh.
   useIndicatorSeries({
     chartRef,
@@ -333,6 +376,16 @@ export default function ChartComponent({
       )}
       <div className="relative">
         <div ref={chartContainerRef} className="w-full" />
+
+        {ohlcLegend && (
+          <div style={{ position: 'absolute', top: 6, left: 8, zIndex: 6, pointerEvents: 'none' }}>
+            {renderOhlcLegend ? (
+              renderOhlcLegend(ohlcLegend)
+            ) : (
+              <OhlcLegend data={ohlcLegend} theme={resolvedTheme} timeZone={timeZone} />
+            )}
+          </div>
+        )}
 
         {bandRects.map((b) => (
           <div

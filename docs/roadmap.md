@@ -9,25 +9,26 @@ Status legend: **▶ Next** · **◷ Deferred** · **○ Backlog**
 
 ---
 
-## ▶ Next (workbench-driven)
+## ✅ Shipped (0.3.0)
 
-### Session shading + event overlays
-Pre-market / RTH / after-hours background shading, day (and week) separators, and event
-markers (earnings, splits, news, FOMC) at timestamps. Makes intraday charts legible and
-ties setups to context.
-- *Fits workbench:* "what regime/session was this setup in?" at a glance.
-- *Tech crux:* lightweight-charts has no native vertical/background drawing — needs a custom
-  `ISeriesPrimitive` (precedent: `src/indicators/primitives/BandsPrimitive.ts`). Chart is
-  already `timeZone`-aware (ET). Events may reuse the existing `SeriesMarker` machinery.
+### Session shading + day separators
+Pre-market / RTH / after-hours background shading + day-boundary separators, via a custom
+`SessionsPrimitive` (`src/indicators/primitives/SessionsPrimitive.ts`) + pure logic in
+`src/sessions/sessions.ts`. `ChartComponent` prop `sessions` (`true` = US-equity preset, or a
+`SessionsConfig`). **Event overlays were split out and deferred** (see below).
 
 ### Crosshair OHLC readout
-A legend that follows the crosshair showing O/H/L/C/V, change %, and each active indicator's
-value at the hovered bar (falls back to the last bar when not hovering).
-- *Fits workbench:* precise per-bar values while inspecting trades/features.
-- *Tech:* `subscribeCrosshairMove` + `param.seriesData` (already used by `LineChart`'s legend);
-  `ChartComponent` lacks the equivalent. Low effort, universally wanted.
+`showOhlcLegend` / `renderOhlcLegend` on `ChartComponent` — a top-left legend (O/H/L/C/V +
+change% + indicator values; idle = last bar). `useOhlcLegend` + `OhlcLegend` + pure
+`ohlcLegendData.ts`.
 
 ## ◷ Deferred
+
+### Event overlays
+Event markers/lines (earnings, splits, news, FOMC, or lane-engine domain events like regime
+transitions / detected trigger firings) at timestamps. Deferred from the 0.3.0 session work
+pending a decision on what the workbench feeds in (likely lane-engine domain events, not
+external earnings data). Reuses the `SessionsPrimitive` time-anchored drawing approach.
 
 ### First-class realtime price syncing
 Primitives already exist (`useBarsData.subscribe`/`onBar`/`onTrade`, `AlpacaBarAdapter` WS,

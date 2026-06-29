@@ -10,9 +10,14 @@ export { default as SettingsDialog } from './components/SettingsDialog';
 export { default as LineSettingsDialog } from './components/LineSettingsDialog';
 export { default as LineChart } from './components/LineChart';
 export type { LineChartSeries, LineChartProps } from './components/LineChart';
+export type { OhlcLegendData, OhlcLegendIndicator } from './components/ohlcLegendData';
 
 // Types
 export type { OHLCVBar, ChartLine, ChartTrade, PriceBand, ChartTheme, IndicatorPanel } from './types/chart';
+
+// Session shading (config + US-equity preset)
+export { US_EQUITY_PRESET } from './sessions/sessions';
+export type { SessionsConfig, SessionDef } from './sessions/sessions';
 // `IndicatorSettings` is exported via the indicators barrel below (the canonical
 // schema type — `Record<string, SettingField>`), so it's intentionally not re-exported here.
 
