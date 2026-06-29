@@ -38,6 +38,7 @@
   },
   "scripts": {
     "dev": "vite",
+    "build:demo": "vite build --outDir demo-dist",
     "build:lib": "tsup && npm run build:css",
     "build:css": "tailwindcss -c tailwind.lib.config.js -i ./src/lib.css -o ./dist/styles.css --minify",
     "prepublishOnly": "npm run build:lib",
