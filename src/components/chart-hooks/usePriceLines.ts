@@ -30,10 +30,14 @@ export function usePriceLines({
   const computePositions = () => {
     if (!candlestickSeriesRef.current || !chartContainerRef.current) return;
     const rect = chartContainerRef.current.getBoundingClientRect();
+    // priceToCoordinate still returns a value when the line's price is scrolled
+    // outside the visible range, so clamp to [0, containerHeight] — otherwise an
+    // off-screen line's delete button renders floating at the chart edge.
+    const containerHeight = chartContainerRef.current.offsetHeight;
     const newPositions = new Map<string, { top: number; right: number }>();
     lines.forEach((line) => {
       const y = candlestickSeriesRef.current?.priceToCoordinate(line.price);
-      if (y !== null && y !== undefined) {
+      if (y !== null && y !== undefined && y >= 0 && y <= containerHeight) {
         newPositions.set(line.id, {
           top: rect.top + y,
           right: window.innerWidth - rect.right + LINE_LABEL_RIGHT_OFFSET + estimateLabelTitleWidth(line.title),
