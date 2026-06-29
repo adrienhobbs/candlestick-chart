@@ -14,6 +14,7 @@ import {
 } from 'lightweight-charts';
 import type { ChartTheme } from '../types/chart';
 import { buildBaseChartLayoutOptions, resolveChartTheme } from '../utils/chartTheme';
+import { toLineData } from './lineChartData';
 
 /** One line in a {@link LineChart}. */
 export interface LineChartSeries {
@@ -58,24 +59,6 @@ function styleToLineStyle(style?: 'solid' | 'dashed' | 'dotted'): LineStyle {
     default:
       return LineStyle.Solid;
   }
-}
-
-// Ordinal {x,y} → LWC LineData: x becomes an integer `time`, sorted ascending,
-// deduped by x (last wins), and NaN-filtered — all three are LWC requirements.
-function toLineData(points: { x: number; y: number }[]): LineData[] {
-  const sorted = [...points].sort((a, b) => a.x - b.x);
-  const out: LineData[] = [];
-  let lastX = Number.NaN;
-  for (const p of sorted) {
-    if (!Number.isFinite(p.x) || !Number.isFinite(p.y)) continue;
-    const point = { time: p.x as Time, value: p.y };
-    if (p.x === lastX) out[out.length - 1] = point;
-    else {
-      out.push(point);
-      lastX = p.x;
-    }
-  }
-  return out;
 }
 
 /**
