@@ -3,6 +3,7 @@ import {
   IndicatorCategory,
   ChartSeriesType,
 } from '../core/types';
+import { numberSetting, colorSetting, lineWidthSetting } from '../core/settings';
 import { OHLCVBar } from '../../types/chart';
 
 type ResetPeriod = 'none' | 'daily' | 'weekly' | 'monthly';
@@ -116,60 +117,31 @@ export const VWAPIndicator: IndicatorDefinition = {
         { label: 'Monthly', value: 'monthly' },
       ],
     },
-    bandMultiplier: {
-      type: 'number',
+    bandMultiplier: numberSetting({
       label: 'Band Multiplier',
       defaultValue: 1,
       description: 'Standard deviation multiplier for bands',
       min: 0.5,
       max: 5,
       step: 0.1,
-    },
+    }),
     showBands: {
       type: 'boolean',
       label: 'Show Bands',
       defaultValue: true,
       description: 'Show standard deviation bands',
     },
-    vwapColor: {
-      type: 'color',
-      label: 'VWAP Color',
-      defaultValue: '#f59e0b',
-      description: 'Color of the VWAP line',
-    },
-    upperColor: {
-      type: 'color',
-      label: 'Upper Band Color',
-      defaultValue: '#ef4444',
-      description: 'Color of the upper band',
-    },
-    lowerColor: {
-      type: 'color',
-      label: 'Lower Band Color',
-      defaultValue: '#10b981',
-      description: 'Color of the lower band',
-    },
-    lineWidth: {
-      type: 'number',
-      label: 'Line Width',
-      defaultValue: 2,
-      description: 'Width of the lines',
-      min: 1,
-      max: 5,
-      step: 1,
-    },
+    vwapColor: colorSetting('VWAP Color', '#f59e0b', 'Color of the VWAP line'),
+    upperColor: colorSetting('Upper Band Color', '#ef4444', 'Color of the upper band'),
+    lowerColor: colorSetting('Lower Band Color', '#10b981', 'Color of the lower band'),
+    lineWidth: lineWidthSetting(2, 'Width of the lines'),
     showFill: {
       type: 'boolean',
       label: 'Show Fill',
       defaultValue: true,
       description: 'Show shaded area between bands',
     },
-    fillColor: {
-      type: 'color',
-      label: 'Fill Color',
-      defaultValue: 'rgba(245, 158, 11, 0.1)',
-      description: 'Color of the shaded area between bands',
-    },
+    fillColor: colorSetting('Fill Color', 'rgba(245, 158, 11, 0.1)', 'Color of the shaded area between bands'),
   },
   renderConfig: {
     seriesType: ChartSeriesType.LINE,

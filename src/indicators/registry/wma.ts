@@ -3,6 +3,7 @@ import {
   IndicatorCategory,
   ChartSeriesType,
 } from '../core/types';
+import { numberSetting, colorSetting, lineWidthSetting } from '../core/settings';
 import { wma } from 'fast-technical-indicators';
 
 export const WMAIndicator: IndicatorDefinition = {
@@ -14,30 +15,16 @@ export const WMAIndicator: IndicatorDefinition = {
     version: '1.0.0',
   },
   settings: {
-    period: {
-      type: 'number',
+    period: numberSetting({
       label: 'Period',
       defaultValue: 20,
       description: 'Number of bars to average',
       min: 1,
       max: 500,
       step: 1,
-    },
-    color: {
-      type: 'color',
-      label: 'Line Color',
-      defaultValue: '#f59e0b',
-      description: 'Color of the WMA line',
-    },
-    lineWidth: {
-      type: 'number',
-      label: 'Line Width',
-      defaultValue: 2,
-      description: 'Width of the WMA line',
-      min: 1,
-      max: 5,
-      step: 1,
-    },
+    }),
+    color: colorSetting('Line Color', '#f59e0b', 'Color of the WMA line'),
+    lineWidth: lineWidthSetting(2, 'Width of the WMA line'),
   },
   renderConfig: {
     seriesType: ChartSeriesType.LINE,

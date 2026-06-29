@@ -1,8 +1,9 @@
 import type { SeriesMarker, Time } from 'lightweight-charts';
 import type { ChartTrade } from '../types/chart';
+import { WIN_COLOR, LOSS_COLOR } from '../constants/colors';
 
-const WIN = '#10b981';
-const LOSS = '#ef4444';
+const WIN = WIN_COLOR;
+const LOSS = LOSS_COLOR;
 
 /** Win/loss marker colors. Defaults match the library's default candle palette;
  *  pass a theme's up/down colors to keep markers consistent with the chart. */

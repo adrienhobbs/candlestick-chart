@@ -3,6 +3,7 @@ import {
   IndicatorCategory,
   ChartSeriesType,
 } from '../core/types';
+import { numberSetting, colorSetting, lineWidthSetting } from '../core/settings';
 import { calculateRSI } from '../utils/calculations';
 
 export const RSIIndicator: IndicatorDefinition = {
@@ -14,30 +15,16 @@ export const RSIIndicator: IndicatorDefinition = {
     version: '1.0.0',
   },
   settings: {
-    period: {
-      type: 'number',
+    period: numberSetting({
       label: 'Period',
       defaultValue: 14,
       description: 'Number of bars for RSI calculation',
       min: 2,
       max: 100,
       step: 1,
-    },
-    color: {
-      type: 'color',
-      label: 'Line Color',
-      defaultValue: '#8b5cf6',
-      description: 'Color of the RSI line',
-    },
-    lineWidth: {
-      type: 'number',
-      label: 'Line Width',
-      defaultValue: 2,
-      description: 'Width of the RSI line',
-      min: 1,
-      max: 5,
-      step: 1,
-    },
+    }),
+    color: colorSetting('Line Color', '#8b5cf6', 'Color of the RSI line'),
+    lineWidth: lineWidthSetting(2, 'Width of the RSI line'),
   },
   renderConfig: {
     seriesType: ChartSeriesType.LINE,

@@ -3,6 +3,7 @@ import {
   IndicatorCategory,
   ChartSeriesType,
 } from '../core/types';
+import { numberSetting, colorSetting, lineWidthSetting } from '../core/settings';
 import { mfi } from 'fast-technical-indicators';
 
 export const MFIIndicator: IndicatorDefinition = {
@@ -14,30 +15,16 @@ export const MFIIndicator: IndicatorDefinition = {
     version: '1.0.0',
   },
   settings: {
-    period: {
-      type: 'number',
+    period: numberSetting({
       label: 'Period',
       defaultValue: 14,
       description: 'Number of bars for MFI calculation',
       min: 2,
       max: 100,
       step: 1,
-    },
-    color: {
-      type: 'color',
-      label: 'Line Color',
-      defaultValue: '#f59e0b',
-      description: 'Color of the MFI line',
-    },
-    lineWidth: {
-      type: 'number',
-      label: 'Line Width',
-      defaultValue: 2,
-      description: 'Width of the MFI line',
-      min: 1,
-      max: 5,
-      step: 1,
-    },
+    }),
+    color: colorSetting('Line Color', '#f59e0b', 'Color of the MFI line'),
+    lineWidth: lineWidthSetting(2, 'Width of the MFI line'),
   },
   renderConfig: {
     seriesType: ChartSeriesType.LINE,

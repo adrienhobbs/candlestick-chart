@@ -6,6 +6,7 @@ import {
   IChartApi,
   type LineData,
 } from 'lightweight-charts';
+import { BAND_FILL } from '../../constants/colors';
 
 export interface BandsPrimitiveOptions {
   upperSeries: ISeriesApi<'Line'>;
@@ -76,7 +77,7 @@ class AreaBetweenLinesPaneView {
 
     this._data = {
       points,
-      color: this._source._options.fillColor || 'rgba(59, 130, 246, 0.1)',
+      color: this._source._options.fillColor || BAND_FILL,
     };
   }
 

@@ -3,6 +3,7 @@ import {
   IndicatorCategory,
   ChartSeriesType,
 } from '../core/types';
+import { numberSetting, colorSetting } from '../core/settings';
 import { psar } from 'fast-technical-indicators';
 
 export const PSARIndicator: IndicatorDefinition = {
@@ -14,30 +15,23 @@ export const PSARIndicator: IndicatorDefinition = {
     version: '1.0.0',
   },
   settings: {
-    step: {
-      type: 'number',
+    step: numberSetting({
       label: 'Step (AF)',
       defaultValue: 0.02,
       description: 'Acceleration Factor step',
       min: 0.001,
       max: 1,
       step: 0.001,
-    },
-    max: {
-      type: 'number',
+    }),
+    max: numberSetting({
       label: 'Max AF',
       defaultValue: 0.2,
       description: 'Maximum Acceleration Factor',
       min: 0.01,
       max: 1,
       step: 0.01,
-    },
-    color: {
-      type: 'color',
-      label: 'Color',
-      defaultValue: '#f59e0b',
-      description: 'Color of the SAR dots',
-    },
+    }),
+    color: colorSetting('Color', '#f59e0b', 'Color of the SAR dots'),
   },
   renderConfig: {
     seriesType: ChartSeriesType.LINE,

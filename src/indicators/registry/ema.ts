@@ -3,6 +3,7 @@ import {
   IndicatorCategory,
   ChartSeriesType,
 } from '../core/types';
+import { numberSetting, colorSetting, lineWidthSetting } from '../core/settings';
 import { calculateEMA } from '../utils/calculations';
 
 export const EMAIndicator: IndicatorDefinition = {
@@ -14,30 +15,16 @@ export const EMAIndicator: IndicatorDefinition = {
     version: '1.0.0',
   },
   settings: {
-    period: {
-      type: 'number',
+    period: numberSetting({
       label: 'Period',
       defaultValue: 12,
       description: 'Number of bars for EMA calculation',
       min: 1,
       max: 500,
       step: 1,
-    },
-    color: {
-      type: 'color',
-      label: 'Line Color',
-      defaultValue: '#10b981',
-      description: 'Color of the EMA line',
-    },
-    lineWidth: {
-      type: 'number',
-      label: 'Line Width',
-      defaultValue: 2,
-      description: 'Width of the EMA line',
-      min: 1,
-      max: 5,
-      step: 1,
-    },
+    }),
+    color: colorSetting('Line Color', '#10b981', 'Color of the EMA line'),
+    lineWidth: lineWidthSetting(2, 'Width of the EMA line'),
   },
   renderConfig: {
     seriesType: ChartSeriesType.LINE,

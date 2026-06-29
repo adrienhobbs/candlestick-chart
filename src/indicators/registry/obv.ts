@@ -3,6 +3,7 @@ import {
   IndicatorCategory,
   ChartSeriesType,
 } from '../core/types';
+import { colorSetting, lineWidthSetting } from '../core/settings';
 import { obv } from 'fast-technical-indicators';
 
 export const OBVIndicator: IndicatorDefinition = {
@@ -14,21 +15,8 @@ export const OBVIndicator: IndicatorDefinition = {
     version: '1.0.0',
   },
   settings: {
-    color: {
-      type: 'color',
-      label: 'Line Color',
-      defaultValue: '#10b981',
-      description: 'Color of the OBV line',
-    },
-    lineWidth: {
-      type: 'number',
-      label: 'Line Width',
-      defaultValue: 2,
-      description: 'Width of the OBV line',
-      min: 1,
-      max: 5,
-      step: 1,
-    },
+    color: colorSetting('Line Color', '#10b981', 'Color of the OBV line'),
+    lineWidth: lineWidthSetting(2, 'Width of the OBV line'),
   },
   renderConfig: {
     seriesType: ChartSeriesType.LINE,

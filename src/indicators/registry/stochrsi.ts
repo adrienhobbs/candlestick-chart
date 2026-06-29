@@ -3,6 +3,7 @@ import {
   IndicatorCategory,
   ChartSeriesType,
 } from '../core/types';
+import { numberSetting, colorSetting, lineWidthSetting } from '../core/settings';
 import { stochasticrsi } from 'fast-technical-indicators';
 
 export const StochRSIIndicator: IndicatorDefinition = {
@@ -14,63 +15,41 @@ export const StochRSIIndicator: IndicatorDefinition = {
     version: '1.0.0',
   },
   settings: {
-    rsiPeriod: {
-      type: 'number',
+    rsiPeriod: numberSetting({
       label: 'RSI Period',
       defaultValue: 14,
       description: 'Period for RSI calculation',
       min: 2,
       max: 100,
       step: 1,
-    },
-    stochPeriod: {
-      type: 'number',
+    }),
+    stochPeriod: numberSetting({
       label: 'Stochastic Period',
       defaultValue: 14,
       description: 'Period for Stochastic calculation',
       min: 2,
       max: 100,
       step: 1,
-    },
-    kPeriod: {
-      type: 'number',
+    }),
+    kPeriod: numberSetting({
       label: '%K Period',
       defaultValue: 3,
       description: 'Smoothing period for %K',
       min: 1,
       max: 50,
       step: 1,
-    },
-    dPeriod: {
-      type: 'number',
+    }),
+    dPeriod: numberSetting({
       label: '%D Period',
       defaultValue: 3,
       description: 'Smoothing period for %D signal line',
       min: 1,
       max: 50,
       step: 1,
-    },
-    kColor: {
-      type: 'color',
-      label: '%K Line Color',
-      defaultValue: '#3b82f6',
-      description: 'Color of the %K line',
-    },
-    dColor: {
-      type: 'color',
-      label: '%D Line Color',
-      defaultValue: '#ef4444',
-      description: 'Color of the %D signal line',
-    },
-    lineWidth: {
-      type: 'number',
-      label: 'Line Width',
-      defaultValue: 2,
-      description: 'Width of the indicator lines',
-      min: 1,
-      max: 5,
-      step: 1,
-    },
+    }),
+    kColor: colorSetting('%K Line Color', '#3b82f6', 'Color of the %K line'),
+    dColor: colorSetting('%D Line Color', '#ef4444', 'Color of the %D signal line'),
+    lineWidth: lineWidthSetting(2, 'Width of the indicator lines'),
   },
   renderConfig: {
     seriesType: ChartSeriesType.LINE,

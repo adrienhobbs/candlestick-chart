@@ -3,6 +3,7 @@ import {
   IndicatorCategory,
   ChartSeriesType,
 } from '../core/types';
+import { numberSetting, colorSetting, lineWidthSetting } from '../core/settings';
 import { williamsr } from 'fast-technical-indicators';
 
 export const WilliamsRIndicator: IndicatorDefinition = {
@@ -14,30 +15,16 @@ export const WilliamsRIndicator: IndicatorDefinition = {
     version: '1.0.0',
   },
   settings: {
-    period: {
-      type: 'number',
+    period: numberSetting({
       label: 'Period',
       defaultValue: 14,
       description: 'Number of bars for Williams %R calculation',
       min: 2,
       max: 100,
       step: 1,
-    },
-    color: {
-      type: 'color',
-      label: 'Line Color',
-      defaultValue: '#a855f7',
-      description: 'Color of the Williams %R line',
-    },
-    lineWidth: {
-      type: 'number',
-      label: 'Line Width',
-      defaultValue: 2,
-      description: 'Width of the Williams %R line',
-      min: 1,
-      max: 5,
-      step: 1,
-    },
+    }),
+    color: colorSetting('Line Color', '#a855f7', 'Color of the Williams %R line'),
+    lineWidth: lineWidthSetting(2, 'Width of the Williams %R line'),
   },
   renderConfig: {
     seriesType: ChartSeriesType.LINE,

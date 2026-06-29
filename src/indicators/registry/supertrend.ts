@@ -3,6 +3,7 @@ import {
   IndicatorCategory,
   ChartSeriesType,
 } from '../core/types';
+import { numberSetting, colorSetting, lineWidthSetting } from '../core/settings';
 import { supertrend } from 'fast-technical-indicators';
 
 export const SuperTrendIndicator: IndicatorDefinition = {
@@ -14,39 +15,24 @@ export const SuperTrendIndicator: IndicatorDefinition = {
     version: '1.0.0',
   },
   settings: {
-    period: {
-      type: 'number',
+    period: numberSetting({
       label: 'Period',
       defaultValue: 10,
       description: 'Period for ATR calculation',
       min: 1,
       max: 100,
       step: 1,
-    },
-    multiplier: {
-      type: 'number',
+    }),
+    multiplier: numberSetting({
       label: 'Multiplier',
       defaultValue: 3,
       description: 'ATR multiplier for bands',
       min: 0.1,
       max: 10,
       step: 0.1,
-    },
-    color: {
-      type: 'color',
-      label: 'Line Color',
-      defaultValue: '#06b6d4',
-      description: 'Color of the SuperTrend line',
-    },
-    lineWidth: {
-      type: 'number',
-      label: 'Line Width',
-      defaultValue: 2,
-      description: 'Width of the SuperTrend line',
-      min: 1,
-      max: 5,
-      step: 1,
-    },
+    }),
+    color: colorSetting('Line Color', '#06b6d4', 'Color of the SuperTrend line'),
+    lineWidth: lineWidthSetting(2, 'Width of the SuperTrend line'),
   },
   renderConfig: {
     seriesType: ChartSeriesType.LINE,

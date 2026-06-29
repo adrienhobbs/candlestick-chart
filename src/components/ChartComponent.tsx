@@ -25,6 +25,7 @@ import { indicatorRegistry } from '../indicators/core/registry';
 import { indicatorCalculator } from '../indicators/core/calculator';
 import { BandsPrimitive } from '../indicators/primitives/BandsPrimitive';
 import { buildTradeMarkers } from './trade-markers';
+import { PALETTE, BAND_FILL } from '../constants/colors';
 
 /** An item in the chart's right-click context menu (see `contextMenuItems`). */
 export interface ContextMenuItem {
@@ -88,7 +89,7 @@ interface ChartComponentProps {
 }
 
 // Palette for multi-output indicators whose fields lack an explicit color setting.
-const MULTI_LINE_PALETTE = ['#3b82f6', '#ef4444', '#10b981', '#f59e0b', '#a855f7', '#06b6d4'];
+const MULTI_LINE_PALETTE = PALETTE;
 
 // Default share of the chart height given to the volume pane (price action dominates).
 const VOLUME_PANE_FRACTION = 0.14;
@@ -780,7 +781,7 @@ export default function ChartComponent({
             const bandsPrimitive = new BandsPrimitive({
               upperSeries: upperSeries,
               lowerSeries: lowerSeries,
-              fillColor: indicator.settings.fillColor || 'rgba(59, 130, 246, 0.1)',
+              fillColor: indicator.settings.fillColor || BAND_FILL,
             });
             upperSeries.attachPrimitive(bandsPrimitive);
           }

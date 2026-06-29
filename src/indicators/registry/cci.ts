@@ -3,6 +3,7 @@ import {
   IndicatorCategory,
   ChartSeriesType,
 } from '../core/types';
+import { numberSetting, colorSetting, lineWidthSetting } from '../core/settings';
 import { cci } from 'fast-technical-indicators';
 
 export const CCIIndicator: IndicatorDefinition = {
@@ -14,30 +15,16 @@ export const CCIIndicator: IndicatorDefinition = {
     version: '1.0.0',
   },
   settings: {
-    period: {
-      type: 'number',
+    period: numberSetting({
       label: 'Period',
       defaultValue: 20,
       description: 'Number of bars for CCI calculation',
       min: 2,
       max: 100,
       step: 1,
-    },
-    color: {
-      type: 'color',
-      label: 'Line Color',
-      defaultValue: '#ec4899',
-      description: 'Color of the CCI line',
-    },
-    lineWidth: {
-      type: 'number',
-      label: 'Line Width',
-      defaultValue: 2,
-      description: 'Width of the CCI line',
-      min: 1,
-      max: 5,
-      step: 1,
-    },
+    }),
+    color: colorSetting('Line Color', '#ec4899', 'Color of the CCI line'),
+    lineWidth: lineWidthSetting(2, 'Width of the CCI line'),
   },
   renderConfig: {
     seriesType: ChartSeriesType.LINE,

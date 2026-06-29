@@ -3,6 +3,7 @@ import {
   IndicatorCategory,
   ChartSeriesType,
 } from '../core/types';
+import { numberSetting, colorSetting, lineWidthSetting } from '../core/settings';
 import { adx } from 'fast-technical-indicators';
 
 export const ADXIndicator: IndicatorDefinition = {
@@ -14,30 +15,16 @@ export const ADXIndicator: IndicatorDefinition = {
     version: '1.0.0',
   },
   settings: {
-    period: {
-      type: 'number',
+    period: numberSetting({
       label: 'Period',
       defaultValue: 14,
       description: 'Number of bars for ADX calculation',
       min: 2,
       max: 100,
       step: 1,
-    },
-    color: {
-      type: 'color',
-      label: 'Line Color',
-      defaultValue: '#06b6d4',
-      description: 'Color of the ADX line',
-    },
-    lineWidth: {
-      type: 'number',
-      label: 'Line Width',
-      defaultValue: 2,
-      description: 'Width of the ADX line',
-      min: 1,
-      max: 5,
-      step: 1,
-    },
+    }),
+    color: colorSetting('Line Color', '#06b6d4', 'Color of the ADX line'),
+    lineWidth: lineWidthSetting(2, 'Width of the ADX line'),
   },
   renderConfig: {
     seriesType: ChartSeriesType.LINE,

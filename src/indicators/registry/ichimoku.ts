@@ -3,6 +3,8 @@ import {
   IndicatorCategory,
   ChartSeriesType,
 } from '../core/types';
+import { numberSetting, colorSetting, lineWidthSetting } from '../core/settings';
+import { BAND_FILL } from '../../constants/colors';
 import { ichimokucloud } from 'fast-technical-indicators';
 import { displaceArray } from '../utils/calculations';
 
@@ -15,87 +17,50 @@ export const IchimokuIndicator: IndicatorDefinition = {
     version: '1.0.0',
   },
   settings: {
-    conversionPeriod: {
-      type: 'number',
+    conversionPeriod: numberSetting({
       label: 'Conversion Period (Tenkan)',
       defaultValue: 9,
       description: 'Period for conversion line',
       min: 1,
       max: 100,
       step: 1,
-    },
-    basePeriod: {
-      type: 'number',
+    }),
+    basePeriod: numberSetting({
       label: 'Base Period (Kijun)',
       defaultValue: 26,
       description: 'Period for base line',
       min: 1,
       max: 100,
       step: 1,
-    },
-    spanPeriod: {
-      type: 'number',
+    }),
+    spanPeriod: numberSetting({
       label: 'Span Period (Senkou)',
       defaultValue: 52,
       description: 'Period for span B',
       min: 1,
       max: 200,
       step: 1,
-    },
-    displacement: {
-      type: 'number',
+    }),
+    displacement: numberSetting({
       label: 'Displacement',
       defaultValue: 26,
       description: 'Forward displacement for span lines',
       min: 0,
       max: 100,
       step: 1,
-    },
-    conversionColor: {
-      type: 'color',
-      label: 'Conversion Line Color',
-      defaultValue: '#3b82f6',
-      description: 'Color of the conversion line',
-    },
-    baseColor: {
-      type: 'color',
-      label: 'Base Line Color',
-      defaultValue: '#ef4444',
-      description: 'Color of the base line',
-    },
-    spanAColor: {
-      type: 'color',
-      label: 'Span A Color',
-      defaultValue: '#10b981',
-      description: 'Color of span A (cloud edge)',
-    },
-    spanBColor: {
-      type: 'color',
-      label: 'Span B Color',
-      defaultValue: '#f59e0b',
-      description: 'Color of span B (cloud edge)',
-    },
-    lineWidth: {
-      type: 'number',
-      label: 'Line Width',
-      defaultValue: 2,
-      description: 'Width of the indicator lines',
-      min: 1,
-      max: 5,
-      step: 1,
-    },
+    }),
+    conversionColor: colorSetting('Conversion Line Color', '#3b82f6', 'Color of the conversion line'),
+    baseColor: colorSetting('Base Line Color', '#ef4444', 'Color of the base line'),
+    spanAColor: colorSetting('Span A Color', '#10b981', 'Color of span A (cloud edge)'),
+    spanBColor: colorSetting('Span B Color', '#f59e0b', 'Color of span B (cloud edge)'),
+    lineWidth: lineWidthSetting(2, 'Width of the indicator lines'),
     showCloud: {
       type: 'boolean',
       label: 'Show Cloud',
       defaultValue: true,
       description: 'Fill area between span A and span B',
     },
-    cloudColor: {
-      type: 'color',
-      label: 'Cloud Color',
-      defaultValue: 'rgba(59, 130, 246, 0.1)',
-      description: 'Color of the cloud fill',
-    },
+    cloudColor: colorSetting('Cloud Color', BAND_FILL, 'Color of the cloud fill'),
   },
   renderConfig: {
     seriesType: ChartSeriesType.LINE,

@@ -3,6 +3,8 @@ import {
   IndicatorCategory,
   ChartSeriesType,
 } from '../core/types';
+import { numberSetting, colorSetting, lineWidthSetting } from '../core/settings';
+import { BAND_FILL } from '../../constants/colors';
 import { donchianchannels } from 'fast-technical-indicators';
 
 export const DonchianChannelsIndicator: IndicatorDefinition = {
@@ -14,54 +16,25 @@ export const DonchianChannelsIndicator: IndicatorDefinition = {
     version: '1.0.0',
   },
   settings: {
-    period: {
-      type: 'number',
+    period: numberSetting({
       label: 'Period',
       defaultValue: 20,
       description: 'Number of bars to look back',
       min: 2,
       max: 200,
       step: 1,
-    },
-    upperColor: {
-      type: 'color',
-      label: 'Upper Band Color',
-      defaultValue: '#ef4444',
-      description: 'Color of the upper band',
-    },
-    middleColor: {
-      type: 'color',
-      label: 'Middle Line Color',
-      defaultValue: '#3b82f6',
-      description: 'Color of the middle line',
-    },
-    lowerColor: {
-      type: 'color',
-      label: 'Lower Band Color',
-      defaultValue: '#10b981',
-      description: 'Color of the lower band',
-    },
-    lineWidth: {
-      type: 'number',
-      label: 'Line Width',
-      defaultValue: 2,
-      description: 'Width of the channel lines',
-      min: 1,
-      max: 5,
-      step: 1,
-    },
+    }),
+    upperColor: colorSetting('Upper Band Color', '#ef4444', 'Color of the upper band'),
+    middleColor: colorSetting('Middle Line Color', '#3b82f6', 'Color of the middle line'),
+    lowerColor: colorSetting('Lower Band Color', '#10b981', 'Color of the lower band'),
+    lineWidth: lineWidthSetting(2, 'Width of the channel lines'),
     showFill: {
       type: 'boolean',
       label: 'Show Fill',
       defaultValue: true,
       description: 'Fill area between bands',
     },
-    fillColor: {
-      type: 'color',
-      label: 'Fill Color',
-      defaultValue: 'rgba(59, 130, 246, 0.1)',
-      description: 'Color of the channel fill',
-    },
+    fillColor: colorSetting('Fill Color', BAND_FILL, 'Color of the channel fill'),
   },
   renderConfig: {
     seriesType: ChartSeriesType.LINE,

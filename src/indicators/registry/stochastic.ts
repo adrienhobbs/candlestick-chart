@@ -3,6 +3,7 @@ import {
   IndicatorCategory,
   ChartSeriesType,
 } from '../core/types';
+import { numberSetting, colorSetting, lineWidthSetting } from '../core/settings';
 import { stochastic } from 'fast-technical-indicators';
 
 export const StochasticIndicator: IndicatorDefinition = {
@@ -14,45 +15,25 @@ export const StochasticIndicator: IndicatorDefinition = {
     version: '1.0.0',
   },
   settings: {
-    period: {
-      type: 'number',
+    period: numberSetting({
       label: 'Period (K)',
       defaultValue: 14,
       description: 'Number of bars for %K calculation',
       min: 2,
       max: 100,
       step: 1,
-    },
-    signalPeriod: {
-      type: 'number',
+    }),
+    signalPeriod: numberSetting({
       label: 'Signal Period (D)',
       defaultValue: 3,
       description: 'Number of bars for %D signal line',
       min: 1,
       max: 50,
       step: 1,
-    },
-    kColor: {
-      type: 'color',
-      label: '%K Line Color',
-      defaultValue: '#3b82f6',
-      description: 'Color of the %K line',
-    },
-    dColor: {
-      type: 'color',
-      label: '%D Line Color',
-      defaultValue: '#ef4444',
-      description: 'Color of the %D signal line',
-    },
-    lineWidth: {
-      type: 'number',
-      label: 'Line Width',
-      defaultValue: 2,
-      description: 'Width of the indicator lines',
-      min: 1,
-      max: 5,
-      step: 1,
-    },
+    }),
+    kColor: colorSetting('%K Line Color', '#3b82f6', 'Color of the %K line'),
+    dColor: colorSetting('%D Line Color', '#ef4444', 'Color of the %D signal line'),
+    lineWidth: lineWidthSetting(2, 'Width of the indicator lines'),
   },
   renderConfig: {
     seriesType: ChartSeriesType.LINE,
