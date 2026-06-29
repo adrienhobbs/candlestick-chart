@@ -299,6 +299,7 @@ export default function ChartComponent({
     volumeSeriesRef,
     indicatorSeriesRef,
     barsRef,
+    selectedBar,
     bars,
     indicators,
   });

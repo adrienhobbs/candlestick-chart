@@ -672,7 +672,8 @@ const custom: SessionsConfig = {                    // or fully custom
 ### Crosshair OHLC legend
 
 `showOhlcLegend` shows a top-left legend that follows the crosshair: O/H/L/C, change (abs + %),
-volume, and each active indicator's value at the hovered bar (idle shows the last bar). Style it
+volume, and each active indicator's value at the hovered bar. When the cursor is idle it follows
+the **selected bar** (so click / arrow-key navigation updates it), or the last bar if none is selected. Style it
 yourself with `renderOhlcLegend`.
 
 ```tsx
