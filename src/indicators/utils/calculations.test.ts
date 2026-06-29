@@ -43,17 +43,46 @@ describe('calculateEMA', () => {
   });
 });
 
-describe('calculateRSI', () => {
-  it('all-gains series → 100 at fully-formed indices; leading values NaN', () => {
+describe('calculateRSI (Wilder)', () => {
+  it('NaN before `period`; first RSI at index `period`', () => {
     const out = calculateRSI(barsFromCloses([1, 2, 3, 4, 5, 6]), 3);
     expect(out.length).toBe(6);
-    // i < period are NaN
     expect(out[0]).toBeNaN();
     expect(out[1]).toBeNaN();
     expect(out[2]).toBeNaN();
-    // strictly increasing → no losses → RSI pinned at 100 once the window is fully formed
+    // index === period is the FIRST valid value (was NaN under the old off-by-one).
+    expect(Number.isNaN(out[3])).toBe(false);
+  });
+
+  it('all-gains → 100 from index `period` onward', () => {
+    const out = calculateRSI(barsFromCloses([1, 2, 3, 4, 5, 6]), 3);
+    expect(out[3]).toBe(100);
     expect(out[4]).toBe(100);
     expect(out[5]).toBe(100);
+  });
+
+  it('all-losses → 0 from index `period` onward', () => {
+    const out = calculateRSI(barsFromCloses([6, 5, 4, 3, 2, 1]), 3);
+    expect(out[3]).toBe(0);
+    expect(out[4]).toBe(0);
+    expect(out[5]).toBe(0);
+  });
+
+  it('Wilder smoothing — hand-computed [1,2,1,2] period 2', () => {
+    // changes = [+1, -1, +1].
+    // seed @ i=2: avgGain 0.5, avgLoss 0.5 → RS 1 → RSI 50.
+    // i=3: gain 1,loss 0 → avgGain (0.5+1)/2=0.75, avgLoss 0.25 → RS 3 → RSI 75.
+    const out = calculateRSI(barsFromCloses([1, 2, 1, 2]), 2);
+    expect(out[0]).toBeNaN();
+    expect(out[1]).toBeNaN();
+    expect(out[2]).toBeCloseTo(50, 10);
+    expect(out[3]).toBeCloseTo(75, 10);
+  });
+
+  it('returns all-NaN when there are not enough bars', () => {
+    const out = calculateRSI(barsFromCloses([1, 2, 3]), 5);
+    expect(out.length).toBe(3);
+    expect(out.every((v) => Number.isNaN(v))).toBe(true);
   });
 });
 

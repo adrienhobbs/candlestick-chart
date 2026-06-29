@@ -54,41 +54,48 @@ export function calculateEMA(bars: OHLCVBar[], period: number): number[] {
   return result;
 }
 
+/**
+ * Wilder's Relative Strength Index (the canonical RSI used by trading platforms).
+ *
+ * Returns one value per bar: `NaN` for indices `< period` (not enough data), then
+ * the first RSI at index `period` (seeded from the simple average of the first
+ * `period` gains/losses) and Wilder-smoothed thereafter. RSI = 100 − 100/(1+RS),
+ * RS = avgGain/avgLoss; a zero average loss yields 100.
+ */
 export function calculateRSI(bars: OHLCVBar[], period: number): number[] {
-  const result: number[] = [];
-  const changes: number[] = [];
+  const result: number[] = new Array(bars.length).fill(NaN);
+  if (period <= 0 || bars.length <= period) return result;
 
+  // Consecutive close-to-close changes; `changes[k]` is `close[k+1] − close[k]`,
+  // so the change *into* bar `i` is `changes[i - 1]`.
+  const changes: number[] = [];
   for (let i = 1; i < bars.length; i++) {
     changes.push(bars[i].close - bars[i - 1].close);
   }
 
-  for (let i = 0; i < bars.length; i++) {
-    if (i < period) {
-      result.push(NaN);
-    } else {
-      let gains = 0;
-      let losses = 0;
+  const rsiFrom = (avgGain: number, avgLoss: number): number =>
+    avgLoss === 0 ? 100 : 100 - 100 / (1 + avgGain / avgLoss);
 
-      for (let j = i - period; j < i; j++) {
-        const change = changes[j - 1];
-        if (change > 0) {
-          gains += change;
-        } else {
-          losses += Math.abs(change);
-        }
-      }
+  // Seed at index `period`: simple average of the first `period` changes.
+  let avgGain = 0;
+  let avgLoss = 0;
+  for (let k = 0; k < period; k++) {
+    const change = changes[k];
+    if (change > 0) avgGain += change;
+    else avgLoss += -change;
+  }
+  avgGain /= period;
+  avgLoss /= period;
+  result[period] = rsiFrom(avgGain, avgLoss);
 
-      const avgGain = gains / period;
-      const avgLoss = losses / period;
-
-      if (avgLoss === 0) {
-        result.push(100);
-      } else {
-        const rs = avgGain / avgLoss;
-        const rsi = 100 - 100 / (1 + rs);
-        result.push(rsi);
-      }
-    }
+  // Wilder smoothing for the remaining bars.
+  for (let i = period + 1; i < bars.length; i++) {
+    const change = changes[i - 1];
+    const gain = change > 0 ? change : 0;
+    const loss = change < 0 ? -change : 0;
+    avgGain = (avgGain * (period - 1) + gain) / period;
+    avgLoss = (avgLoss * (period - 1) + loss) / period;
+    result[i] = rsiFrom(avgGain, avgLoss);
   }
 
   return result;
