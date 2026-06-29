@@ -243,12 +243,14 @@ function AppContent() {
     const entry = trade.entryPrice;
     const hi = Math.max(trade.entryPrice, trade.exitPrice);
     const lo = Math.min(trade.entryPrice, trade.exitPrice);
+    // Derived from the selected trade → read-only (no delete button; deleting would
+    // be a no-op since they re-render on every selection).
     return [
-      { id: 'trade-entry', price: entry, color: '#3b82f6', lineStyle: 'solid', title: 'Entry', type: 'entry' },
-      { id: 'trade-stop', price: entry * 0.985, color: '#ef4444', lineStyle: 'dashed', title: 'Stop', type: 'stopLoss' },
-      { id: 'trade-target', price: entry * 1.03, color: '#22c55e', lineStyle: 'dashed', title: 'Target', type: 'takeProfit' },
-      { id: 'trade-mfe', price: hi * 1.005, color: '#2dd4bf', lineStyle: 'dotted', title: 'MFE', type: 'mfe' },
-      { id: 'trade-mae', price: lo * 0.995, color: '#f59e0b', lineStyle: 'dotted', title: 'MAE', type: 'mae' },
+      { id: 'trade-entry', price: entry, color: '#3b82f6', lineStyle: 'solid', title: 'Entry', type: 'entry', deletable: false },
+      { id: 'trade-stop', price: entry * 0.985, color: '#ef4444', lineStyle: 'dashed', title: 'Stop', type: 'stopLoss', deletable: false },
+      { id: 'trade-target', price: entry * 1.03, color: '#22c55e', lineStyle: 'dashed', title: 'Target', type: 'takeProfit', deletable: false },
+      { id: 'trade-mfe', price: hi * 1.005, color: '#2dd4bf', lineStyle: 'dotted', title: 'MFE', type: 'mfe', deletable: false },
+      { id: 'trade-mae', price: lo * 0.995, color: '#f59e0b', lineStyle: 'dotted', title: 'MAE', type: 'mae', deletable: false },
     ];
   }, [selectedTradeId, demoTrades]);
 
