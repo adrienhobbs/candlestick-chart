@@ -415,6 +415,9 @@ function AppContent() {
                 </div>
               );
             }}
+            timeZone="America/New_York"
+            sessions
+            showOhlcLegend
             />
           </div>
         )}
