@@ -64,6 +64,13 @@ export interface PriceBand {
    */
   startTime?: number;
   endTime?: number;
+  /**
+   * Optional inline labels drawn inside a time-bounded box at its top / bottom
+   * edge (e.g. the favorable `+R` and adverse `−R` of an MFE↔MAE excursion).
+   * Ignored for full-width (unbounded) bands.
+   */
+  topLabel?: string;
+  bottomLabel?: string;
 }
 
 export interface ChartTrade {

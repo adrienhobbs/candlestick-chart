@@ -9,6 +9,12 @@ Status legend: **▶ Next** · **◷ Deferred** · **○ Backlog**
 
 ---
 
+## ✅ Shipped (0.4.1)
+
+### Bounded-box edge labels
+A time-bounded `PriceBand` (box) takes optional `topLabel`/`bottomLabel` strings, drawn inside the
+box at its top/bottom edge (e.g. the favorable `+R` / adverse `−R` of an MFE↔MAE excursion).
+
 ## ✅ Shipped (0.4.0)
 
 ### Time-bounded overlays + hovered-bar callback

@@ -35,6 +35,8 @@ export interface TradeOverlayBox {
   endSec: number;
   color: string;
   borderColor?: string;
+  topLabel?: string;
+  bottomLabel?: string;
 }
 
 export interface TradeOverlaysConfig {
@@ -43,7 +45,7 @@ export interface TradeOverlaysConfig {
 }
 
 interface SegmentPx { x1: number; x2: number; y: number; color: string; lineWidth: number; lineStyle: string; title?: string }
-interface BoxPx { x1: number; x2: number; yTop: number; yBot: number; color: string; borderColor?: string }
+interface BoxPx { x1: number; x2: number; yTop: number; yBot: number; color: string; borderColor?: string; topLabel?: string; bottomLabel?: string }
 
 interface TradeOverlaysViewData {
   segments: SegmentPx[];
@@ -102,6 +104,7 @@ class TradeOverlaysPaneView {
         yTop: Math.min(yT as number, yB as number),
         yBot: Math.max(yT as number, yB as number),
         color: b.color, borderColor: b.borderColor,
+        topLabel: b.topLabel, bottomLabel: b.bottomLabel,
       });
     }
 
@@ -149,17 +152,33 @@ class TradeOverlaysRenderer {
       const hpr = scope.horizontalPixelRatio;
       const vpr = scope.verticalPixelRatio;
 
-      // Optional thin box borders.
+      // Optional thin box borders + inline top/bottom labels.
       for (const b of data.boxes) {
-        if (!b.borderColor) continue;
-        ctx.save();
-        ctx.strokeStyle = b.borderColor;
-        ctx.lineWidth = Math.max(1, Math.round(hpr));
-        ctx.strokeRect(
-          Math.round(b.x1 * hpr), Math.round(b.yTop * vpr),
-          Math.round((b.x2 - b.x1) * hpr), Math.round((b.yBot - b.yTop) * vpr),
-        );
-        ctx.restore();
+        if (b.borderColor) {
+          ctx.save();
+          ctx.strokeStyle = b.borderColor;
+          ctx.lineWidth = Math.max(1, Math.round(hpr));
+          ctx.strokeRect(
+            Math.round(b.x1 * hpr), Math.round(b.yTop * vpr),
+            Math.round((b.x2 - b.x1) * hpr), Math.round((b.yBot - b.yTop) * vpr),
+          );
+          ctx.restore();
+        }
+        if (b.topLabel || b.bottomLabel) {
+          ctx.save();
+          ctx.fillStyle = b.borderColor ?? '#cbd5e1';
+          ctx.font = `${Math.round(10 * vpr)}px sans-serif`;
+          const xText = Math.round(b.x1 * hpr) + Math.round(4 * hpr);
+          if (b.topLabel) {
+            ctx.textBaseline = 'top';
+            ctx.fillText(b.topLabel, xText, Math.round(b.yTop * vpr) + Math.round(2 * vpr));
+          }
+          if (b.bottomLabel) {
+            ctx.textBaseline = 'bottom';
+            ctx.fillText(b.bottomLabel, xText, Math.round(b.yBot * vpr) - Math.round(2 * vpr));
+          }
+          ctx.restore();
+        }
       }
 
       for (const s of data.segments) {

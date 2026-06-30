@@ -41,6 +41,8 @@ export function useTradeOverlays({ candlestickSeriesRef, lines, bands }: UseTrad
       startSec: Math.floor((b.startTime as number) / 1000),
       endSec: Math.floor((b.endTime as number) / 1000),
       color: b.color,
+      topLabel: b.topLabel,
+      bottomLabel: b.bottomLabel,
     })),
   }), [lines, bands]);
 

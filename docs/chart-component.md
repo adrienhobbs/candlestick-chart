@@ -494,6 +494,9 @@ Bounded overlays are read-only (no axis label, delete button, drag, or edit) and
 optional inline title at the segment's left end. Endpoints should align to real bar timestamps.
 Pair with `onHoverBar` to show a trade's overlays only while hovering its bars.
 
+A bounded **box** also takes optional `topLabel` / `bottomLabel` strings, drawn inside the box at
+its top / bottom edge — e.g. the favorable `+R` and adverse `−R` of an MFE↔MAE excursion.
+
 ### Context Menu
 
 Right-click on the chart to open a context menu for adding price lines. The menu
