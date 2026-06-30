@@ -2,13 +2,23 @@
 
 A powerful, provider-agnostic trading chart built on TradingView's Lightweight Charts library.
 
+### 🔗 [**Live demo →**](https://adrienhobbs.github.io/candlestick-chart/)
+
+Right-click to add a price line, then **drag** it to reprice or **double-click** to edit; **hover**
+a trade's bars to preview its time-bounded entry/stop/target + a labeled MFE↔MAE box; toggle
+indicators, session shading, and the crosshair OHLC legend.
+
 ## Features
 
 ### Chart Visualization
 - Real-time candlestick charts with volume
 - Technical indicators (SMA, EMA, RSI, MACD, Bollinger Bands, VWAP, …)
-- Interactive price lines for entry/exit levels
+- **Interactive price lines** — drag to reprice (`onLineMove`), double-click to edit (`onLineChange`)
+- **Time-bounded trade overlays** — entry/stop/target segments + a labeled MFE↔MAE box that span a
+  trade's window and auto-hide when scrolled away (`startTime`/`endTime` on `ChartLine`/`PriceBand`)
+- **Hovered-bar callback** (`onHoverBar`) to drive hover-based UI
 - Trade markers (entry/exit, win/loss colored) with a details popup
+- Crosshair OHLC legend + session shading and day separators
 - Bar selection and inspection (clickable or externally controlled)
 - Infinite scroll for historical data
 - Context menu for quick actions

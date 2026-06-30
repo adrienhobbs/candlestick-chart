@@ -2,6 +2,9 @@
 
 A comprehensive guide to using the ChartComponent in your trading application.
 
+> 🔗 **[Live demo](https://adrienhobbs.github.io/candlestick-chart/)** — drag/edit lines, hover a
+> trade for time-bounded overlays, toggle indicators + sessions + the OHLC legend.
+
 ## Table of Contents
 
 - [Introduction](#introduction)

@@ -160,16 +160,35 @@ function AppContent() {
   const {
     lines,
     indicators,
+    addLine,
     addEntryLine,
     addStopLoss,
     addTakeProfit,
     removeLine,
+    updateLine,
     clearAllLines,
     addLineByType,
     addIndicator,
     removeIndicator,
     updateIndicatorSettings,
   } = useChartAPIContext();
+
+  // Hovered trade (from the chart's onHoverBar) → preview its bounded overlays.
+  const [hoveredTradeId, setHoveredTradeId] = useState<string | null>(null);
+
+  // Double-click a user line → edit dialog. Replace it (same id) with the edits.
+  const handleLineChange = useCallback(
+    (line: ChartLine) => {
+      removeLine(line.id);
+      addLine(line.id, line.price, {
+        color: line.color,
+        lineWidth: line.lineWidth,
+        lineStyle: line.lineStyle,
+        title: line.title,
+      });
+    },
+    [removeLine, addLine],
+  );
 
   const {
     bars,
@@ -236,23 +255,62 @@ function AppContent() {
     ];
   }, [bars]);
 
-  // Synthetic overlay lines (stop/target/MFE/MAE) anchored to the selected trade.
-  const tradeLines = useMemo<ChartLine[]>(() => {
-    const trade = demoTrades.find((t) => t.id === selectedTradeId);
-    if (!trade) return [];
+  // Show a trade's overlays for the hovered trade (preview) else the selected one.
+  const displayedTradeId = hoveredTradeId ?? selectedTradeId;
+
+  // onHoverBar → the trade whose [entry, exit] window contains the hovered bar.
+  const handleHoverBar = useCallback(
+    (tMs: number | null) => {
+      const id =
+        tMs == null
+          ? null
+          : demoTrades.find((t) => tMs >= t.entryTime && tMs <= t.exitTime)?.id ?? null;
+      setHoveredTradeId((prev) => (prev === id ? prev : id));
+    },
+    [demoTrades],
+  );
+
+  // Time-bounded trade overlays (entry/stop/target segments + a labeled MFE↔MAE box)
+  // anchored to the displayed trade's window — so they auto-hide when scrolled away.
+  const { tradeLines, tradeBands } = useMemo(() => {
+    const trade = demoTrades.find((t) => t.id === displayedTradeId);
+    if (!trade || bars.length === 0) return { tradeLines: [] as ChartLine[], tradeBands: [] };
+    const PAD = 2;
+    const ei = bars.findIndex((b) => b.timestamp === trade.entryTime);
+    const xi = bars.findIndex((b) => b.timestamp === trade.exitTime);
+    const startTime = bars[Math.max(0, (ei < 0 ? 0 : ei) - PAD)].timestamp;
+    const endTime = bars[Math.min(bars.length - 1, (xi < 0 ? bars.length - 1 : xi) + PAD)].timestamp;
     const entry = trade.entryPrice;
+    const stop = entry * 0.985;
+    const target = entry * 1.03;
     const hi = Math.max(trade.entryPrice, trade.exitPrice);
     const lo = Math.min(trade.entryPrice, trade.exitPrice);
-    // Derived from the selected trade → read-only (no delete button; deleting would
-    // be a no-op since they re-render on every selection).
-    return [
-      { id: 'trade-entry', price: entry, color: '#3b82f6', lineStyle: 'solid', title: 'Entry', type: 'entry', deletable: false },
-      { id: 'trade-stop', price: entry * 0.985, color: '#ef4444', lineStyle: 'dashed', title: 'Stop', type: 'stopLoss', deletable: false },
-      { id: 'trade-target', price: entry * 1.03, color: '#22c55e', lineStyle: 'dashed', title: 'Target', type: 'takeProfit', deletable: false },
-      { id: 'trade-mfe', price: hi * 1.005, color: '#2dd4bf', lineStyle: 'dotted', title: 'MFE', type: 'mfe', deletable: false },
-      { id: 'trade-mae', price: lo * 0.995, color: '#f59e0b', lineStyle: 'dotted', title: 'MAE', type: 'mae', deletable: false },
-    ];
-  }, [selectedTradeId, demoTrades]);
+    const mfe = hi * 1.005;
+    const mae = lo * 0.995;
+    const risk = entry - stop;
+    const fmtR = (r: number) => `${r >= 0 ? '+' : ''}${r.toFixed(2)}R`;
+    // Read-only + time-bounded → drawn as segments that hide when scrolled off.
+    const ro = { deletable: false, draggable: false, editable: false, startTime, endTime } as const;
+    return {
+      tradeLines: [
+        { id: 'trade-entry', price: entry, color: '#9ca3af', lineStyle: 'solid', title: 'Entry', type: 'entry', ...ro },
+        { id: 'trade-stop', price: stop, color: '#ef4444', lineStyle: 'dashed', title: 'Stop', type: 'stopLoss', ...ro },
+        { id: 'trade-target', price: target, color: '#22c55e', lineStyle: 'dashed', title: 'Target', type: 'takeProfit', ...ro },
+      ] as ChartLine[],
+      tradeBands: [
+        {
+          id: 'trade-mfemae',
+          top: Math.max(mfe, mae),
+          bottom: Math.min(mfe, mae),
+          color: 'rgba(59,130,246,0.12)',
+          startTime,
+          endTime,
+          topLabel: fmtR((mfe - entry) / risk),
+          bottomLabel: fmtR((mae - entry) / risk),
+        },
+      ],
+    };
+  }, [displayedTradeId, demoTrades, bars]);
 
   const handleBarClick = (bar: OHLCVBar | null) => {
     setSelectedBar(bar);
@@ -380,14 +438,25 @@ function AppContent() {
         )}
         {(!loading || bars.length > 0) && (
           <div className="bg-slate-800 rounded-lg shadow-xl p-6 mb-6">
+            <p className="text-xs text-slate-400 mb-3">
+              <span className="text-slate-300 font-semibold">Try it:</span> right-click to add a line,
+              then <span className="text-slate-300">drag</span> it to reprice or{' '}
+              <span className="text-slate-300">double-click</span> to edit · {' '}
+              <span className="text-slate-300">hover</span> a trade's bars to preview its time-bounded
+              entry/stop/target + MFE↔MAE box (with ±R labels) · scroll to load history.
+            </p>
             <ChartComponent
               bars={displayBars}
             onLoadMoreData={handleLoadMoreData}
             indicators={indicators}
             lines={[...lines, ...tradeLines]}
+            priceBands={tradeBands}
             onDeleteLine={removeLine}
             onAddLine={addLineByType}
             onClearAllLines={clearAllLines}
+            onLineMove={updateLine}
+            onLineChange={handleLineChange}
+            onHoverBar={handleHoverBar}
             enableBarSelection={true}
             onBarClick={handleBarClick}
             trades={demoTrades}

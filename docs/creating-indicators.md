@@ -72,6 +72,12 @@ export const MyIndicator: IndicatorDefinition = {
   renderConfig: {
     seriesType: ChartSeriesType.LINE,     // LINE, HISTOGRAM, or AREA
     outputCount: 1,                        // Number of lines (1 for single, 3 for Bollinger, etc.)
+    // priceLineVisible: false,            // (line, optional) hide the full-width last-value line —
+                                           //   use for a value that resets/segments over time (e.g. a
+                                           //   per-day level), so the chart isn't dominated by one
+                                           //   flat line at the latest value. A single-output LINE
+                                           //   indicator also renders non-finite points as gaps
+                                           //   (whitespace), so emit NaN to break the line per segment.
   },
 
   // 4. Calculation Function
