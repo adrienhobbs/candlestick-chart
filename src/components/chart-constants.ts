@@ -17,3 +17,5 @@ export const TRADE_FOCUS_RETRY_MS = 90;
 export const MIN_SPOTLIGHT_WIDTH = 8;
 /** Right offset (px) reserved for a price line's on-axis value box. */
 export const LINE_LABEL_RIGHT_OFFSET = 68;
+/** Vertical pickup radius (px) for grabbing/double-clicking a price line. */
+export const LINE_HIT_THRESHOLD_PX = 6;

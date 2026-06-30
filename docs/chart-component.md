@@ -228,6 +228,8 @@ const bars: OHLCVBar[] = [
 | `onDeleteLine` | `(lineId: string) => void` | - | Callback when a line's delete button is clicked |
 | `onAddLine` | `(type, price) => void` | - | Built-in menu: add a typed line at the price (see [Context Menu](#context-menu)) |
 | `onClearAllLines` | `() => void` | - | Built-in menu: clear all lines |
+| `onLineMove` | `(lineId: string, price: number) => void` | - | Drag a line to reprice it; fires on release (see [Interactive Lines](#interactive-lines)) |
+| `onLineChange` | `(line: ChartLine) => void` | - | Double-click a line to edit it in the built-in dialog; fires on save (see [Interactive Lines](#interactive-lines)) |
 | `contextMenuItems` | `({ price }) => ContextMenuItem[]` | - | Replace the built-in menu with your own items (see [Context Menu](#context-menu)) |
 | `enableBarSelection` | `boolean` | `true` | Enable/disable bar selection feature |
 | `onBarClick` | `(bar: OHLCVBar \| null) => void` | - | Callback when bar is clicked or deselected |
@@ -385,8 +387,13 @@ interface ChartLine {
   title?: string;
   type?: 'entry' | 'stopLoss' | 'takeProfit';
   deletable?: boolean;  // default true; set false to hide the delete button (read-only line)
+  draggable?: boolean;  // default true; set false to make the line non-draggable (read-only line)
+  editable?: boolean;   // default true; set false to disable double-click-to-edit (read-only line)
 }
 ```
+
+`deletable` / `draggable` / `editable` are independent. A derived/read-only line (e.g. a
+trade overlay) should set all three to `false`.
 
 #### Adding Lines Programmatically
 
@@ -427,6 +434,35 @@ const addStopLoss = (price: number) => {
 #### Interactive Delete
 
 Each line has a delete button (red × icon) positioned on the right side of the chart. Click to remove the line. Set `deletable: false` on a line to hide its delete button — useful for derived/read-only lines (e.g. a trade overlay) that shouldn't be removed.
+
+### Interactive Lines
+
+Two opt-in interactions let the user adjust a line directly on the chart:
+
+- **Drag to reprice** — wire `onLineMove`. Grab any line (cursor turns `ns-resize`),
+  drag it vertically, and it follows the cursor live. On release, `onLineMove(id, price)`
+  fires with the new price; update the line's `price` in `lines` to persist it. The chart
+  doesn't pan while you drag a line.
+- **Double-click to edit** — wire `onLineChange`. Double-clicking a line opens the
+  built-in `LineSettingsDialog` (label / color / style / width). On save,
+  `onLineChange(line)` fires with the edited line (same `id`/`price`); merge it into `lines`.
+  (Wiring `onLineChange` opts into the built-in dialog — don't also render your own off it.)
+
+Both are gated per-line: a line with `draggable: false` can't be dragged, and one with
+`editable: false` won't open the dialog. Read-only overlays should set both `false`.
+
+```tsx
+<ChartComponent
+  bars={bars}
+  lines={lines}
+  onLineMove={(id, price) =>
+    setLines((prev) => prev.map((l) => (l.id === id ? { ...l, price } : l)))
+  }
+  onLineChange={(line) =>
+    setLines((prev) => prev.map((l) => (l.id === line.id ? line : l)))
+  }
+/>
+```
 
 ### Context Menu
 
@@ -795,6 +831,38 @@ const handleAddLine = (type, price) => {
 };
 ```
 
+#### onLineMove
+
+Triggered when the user drags a price line to a new price (fires on release). See
+[Interactive Lines](#interactive-lines).
+
+```typescript
+onLineMove?: (lineId: string, price: number) => void
+```
+
+**Example:**
+```typescript
+const handleLineMove = (id: string, price: number) => {
+  setLines(prev => prev.map(l => (l.id === id ? { ...l, price } : l)));
+};
+```
+
+#### onLineChange
+
+Triggered when the user double-clicks a line and saves the built-in edit dialog. See
+[Interactive Lines](#interactive-lines).
+
+```typescript
+onLineChange?: (line: ChartLine) => void
+```
+
+**Example:**
+```typescript
+const handleLineChange = (line: ChartLine) => {
+  setLines(prev => prev.map(l => (l.id === line.id ? line : l)));
+};
+```
+
 ## Chart Interactions
 
 ### Mouse Controls
@@ -807,6 +875,8 @@ const handleAddLine = (type, price) => {
 | **Scroll wheel** | Zoom in/out |
 | **Right-click** | Open context menu |
 | **Click delete button** | Remove price line |
+| **Drag a price line** | Reprice it (`onLineMove`) |
+| **Double-click a price line** | Edit it in a dialog (`onLineChange`) |
 
 ### Touch Controls
 

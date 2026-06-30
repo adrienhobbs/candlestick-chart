@@ -8,13 +8,16 @@ import {
   ISeriesApi,
   Time,
 } from 'lightweight-charts';
-import { OHLCVBar, ChartTheme } from '../../types/chart';
+import { OHLCVBar, ChartLine, ChartTheme } from '../../types/chart';
 import { buildBaseChartLayoutOptions } from '../../utils/chartTheme';
+import { nearestLineWithin } from '../../utils/nearestLine';
 import {
   BAR_CLICK_TIME_TOLERANCE_SEC,
   DRAG_THRESHOLD_PX,
+  LINE_HIT_THRESHOLD_PX,
   MIN_SPOTLIGHT_WIDTH,
 } from '../chart-constants';
+import type { IPriceLine } from 'lightweight-charts';
 
 interface UseChartLifecycleArgs {
   // DOM + chart object refs (created in the component, assigned here).
@@ -43,6 +46,14 @@ interface UseChartLifecycleArgs {
   barSelectionControlled: boolean;
   onBarClick?: (bar: OHLCVBar | null) => void;
   lineEditEnabled: boolean;
+  // Interactive price lines (drag-to-reprice + double-click-to-edit).
+  // Shared live `IPriceLine` map (populated by usePriceLines; mutated here mid-drag).
+  priceLineRefs: MutableRefObject<Map<string, IPriceLine>>;
+  // Latest `lines`, `onLineMove`, `onLineChange` read via refs inside the
+  // create-once handlers without going stale.
+  linesRef: MutableRefObject<ChartLine[]>;
+  onLineMoveRef: MutableRefObject<((id: string, price: number) => void) | undefined>;
+  onLineChangeRef: MutableRefObject<((line: ChartLine) => void) | undefined>;
   // Volume pane sizing (shared with the height-apply effect).
   sizeVolumePane: () => void;
   // State setters.
@@ -50,6 +61,10 @@ interface UseChartLifecycleArgs {
   setContextMenu: Dispatch<SetStateAction<{ x: number; y: number; price: number } | null>>;
   setSelectedBar: Dispatch<SetStateAction<OHLCVBar | null>>;
   setSpotlightPosition: Dispatch<SetStateAction<{ x: number; width: number } | null>>;
+  // Open the edit dialog for a double-clicked line; hide the dragged line's
+  // delete button while it's mid-drag (its host price is stale until release).
+  setEditingLine: Dispatch<SetStateAction<ChartLine | null>>;
+  setDraggingLineId: Dispatch<SetStateAction<string | null>>;
 }
 
 /**
@@ -85,15 +100,29 @@ export function useChartLifecycle({
   barSelectionControlled,
   onBarClick,
   lineEditEnabled,
+  priceLineRefs,
+  linesRef,
+  onLineMoveRef,
+  onLineChangeRef,
   sizeVolumePane,
   setIsLoadingMore,
   setContextMenu,
   setSelectedBar,
   setSpotlightPosition,
+  setEditingLine,
+  setDraggingLineId,
 }: UseChartLifecycleArgs) {
   // Drag tracking is private to the click vs. drag discrimination below.
   const isDraggingRef = useRef(false);
   const mouseDownPosRef = useRef<{ x: number; y: number } | null>(null);
+  // Active line-drag state (null = not dragging a line). `lastGoodPrice` retains
+  // the last in-scale price so an off-scale flick never repositions the line to a
+  // null coordinate; `moved` gates the `onLineMove` fire (a no-move grab — e.g.
+  // the down-strokes of a double-click — must not reprice).
+  const lineDragRef = useRef<{ id: string; lastGoodPrice: number; moved: boolean } | null>(null);
+  // Set on a line-drag mouseup so the subsequent synthetic 'click' doesn't fall
+  // through to bar-selection (covers the sub-threshold grab the 5px drag guard misses).
+  const suppressClickRef = useRef(false);
   // Bar selection is "controlled" when `selectedBarTime` is passed — the click
   // handler then only notifies (via onBarClick) and lets the prop drive the
   // highlight. Read via ref inside the create-once click closure.
@@ -214,12 +243,73 @@ export function useChartLifecycle({
       }
     };
 
+    // Project a line's price to a container-relative y (null = off-scale/no series).
+    const projectPrice = (price: number) =>
+      candlestickSeriesRef.current?.priceToCoordinate(price) ?? null;
+
+    // End an in-progress line-drag: restore pan/zoom, drop the drag, suppress the
+    // trailing click, and (when `fire`) notify the host of the new price.
+    const endLineDrag = (fire: boolean) => {
+      const drag = lineDragRef.current;
+      lineDragRef.current = null;
+      chartRef.current?.applyOptions({ handleScroll: true, handleScale: true });
+      setDraggingLineId(null);
+      suppressClickRef.current = true;
+      if (fire && drag && drag.moved) {
+        onLineMoveRef.current?.(drag.id, drag.lastGoodPrice);
+      }
+    };
+
     const handleMouseDown = (e: MouseEvent) => {
       mouseDownPosRef.current = { x: e.clientX, y: e.clientY };
       isDraggingRef.current = false;
+
+      // Begin a line-drag if the press lands on a draggable line. Capture-phase on
+      // the container runs before lightweight-charts' canvas handler, so freezing
+      // pan/zoom here stops the chart from scrolling under the drag.
+      if (!onLineMoveRef.current || !candlestickSeriesRef.current || !chartContainerRef.current) return;
+      const rect = chartContainerRef.current.getBoundingClientRect();
+      const y = e.clientY - rect.top;
+      const draggable = linesRef.current.filter((l) => l.draggable !== false);
+      const hitId = nearestLineWithin(y, draggable, projectPrice, LINE_HIT_THRESHOLD_PX);
+      const hit = hitId ? linesRef.current.find((l) => l.id === hitId) : undefined;
+      if (!hit) return;
+      lineDragRef.current = { id: hit.id, lastGoodPrice: hit.price, moved: false };
+      setDraggingLineId(hit.id);
+      chartRef.current?.applyOptions({ handleScroll: false, handleScale: false });
+      e.preventDefault();
     };
 
     const handleMouseMove = (e: MouseEvent) => {
+      // Active line-drag: move the line live via applyOptions. `moved` only flips
+      // once travel exceeds the drag threshold, so a (near-stationary) double-click
+      // never repositions the line or fires onLineMove.
+      const drag = lineDragRef.current;
+      if (drag) {
+        const series = candlestickSeriesRef.current;
+        const container = chartContainerRef.current;
+        if (!series || !container) return;
+        const priceLine = priceLineRefs.current.get(drag.id);
+        if (!priceLine) {
+          // Host recreated/removed the line mid-drag — abort cleanly.
+          endLineDrag(false);
+          return;
+        }
+        const rect = container.getBoundingClientRect();
+        const clampedY = Math.max(0, Math.min(container.offsetHeight, e.clientY - rect.top));
+        const price = series.coordinateToPrice(clampedY);
+        if (price !== null) {
+          drag.lastGoodPrice = price as number;
+          const start = mouseDownPosRef.current;
+          const travel = start
+            ? Math.max(Math.abs(e.clientX - start.x), Math.abs(e.clientY - start.y))
+            : Infinity;
+          if (travel > DRAG_THRESHOLD_PX) drag.moved = true;
+          priceLine.applyOptions({ price: price as number });
+        }
+        return;
+      }
+
       if (mouseDownPosRef.current) {
         const dx = Math.abs(e.clientX - mouseDownPosRef.current.x);
         const dy = Math.abs(e.clientY - mouseDownPosRef.current.y);
@@ -227,10 +317,32 @@ export function useChartLifecycle({
           isDraggingRef.current = true;
         }
       }
+
+      // Cursor affordance: ns-resize while hovering a draggable line (not dragging).
+      if (onLineMoveRef.current && candlestickSeriesRef.current && chartContainerRef.current) {
+        const rect = chartContainerRef.current.getBoundingClientRect();
+        const draggable = linesRef.current.filter((l) => l.draggable !== false);
+        const overLine = nearestLineWithin(e.clientY - rect.top, draggable, projectPrice, LINE_HIT_THRESHOLD_PX);
+        chartContainerRef.current.style.cursor = overLine ? 'ns-resize' : '';
+      }
     };
 
     const handleMouseUp = () => {
+      if (lineDragRef.current) {
+        endLineDrag(true);
+      }
       mouseDownPosRef.current = null;
+    };
+
+    // Double-click a line → open the edit dialog (gated on `onLineChange`).
+    const handleDoubleClick = (e: MouseEvent) => {
+      if (!onLineChangeRef.current || !candlestickSeriesRef.current || !chartContainerRef.current) return;
+      const rect = chartContainerRef.current.getBoundingClientRect();
+      const y = e.clientY - rect.top;
+      const editable = linesRef.current.filter((l) => l.editable !== false);
+      const hitId = nearestLineWithin(y, editable, projectPrice, LINE_HIT_THRESHOLD_PX);
+      const hit = hitId ? linesRef.current.find((l) => l.id === hitId) : undefined;
+      if (hit) setEditingLine(hit);
     };
 
     const handleClick = (e: MouseEvent) => {
@@ -238,6 +350,13 @@ export function useChartLifecycle({
 
       if (isDraggingRef.current) {
         isDraggingRef.current = false;
+        return;
+      }
+
+      // Swallow the click that trails a line-drag (covers the sub-threshold grab
+      // the 5px isDragging guard misses), so it doesn't toggle bar-selection.
+      if (suppressClickRef.current) {
+        suppressClickRef.current = false;
         return;
       }
 
@@ -305,6 +424,7 @@ export function useChartLifecycle({
     chartContainerRef.current.addEventListener('mousemove', handleMouseMove, true);
     chartContainerRef.current.addEventListener('mouseup', handleMouseUp, true);
     chartContainerRef.current.addEventListener('click', handleClick, true);
+    chartContainerRef.current.addEventListener('dblclick', handleDoubleClick, true);
 
     const container = chartContainerRef.current;
 
@@ -316,6 +436,11 @@ export function useChartLifecycle({
       container.removeEventListener('mousemove', handleMouseMove, true);
       container.removeEventListener('mouseup', handleMouseUp, true);
       container.removeEventListener('click', handleClick, true);
+      container.removeEventListener('dblclick', handleDoubleClick, true);
+      // Unmounting mid-drag would otherwise leave the chart frozen; the chart is
+      // about to be removed, but reset the drag state for safety.
+      lineDragRef.current = null;
+      suppressClickRef.current = false;
       chart.remove();
       // `chart.remove()` disposes every series this chart owned. Drop the stale
       // series references too — otherwise a remount (e.g. React StrictMode's

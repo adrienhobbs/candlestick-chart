@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type MutableRefObject, type RefObject } from 'react';
+import { useEffect, useState, type MutableRefObject, type RefObject } from 'react';
 import { IChartApi, IPriceLine, ISeriesApi, LineStyle, LineWidth } from 'lightweight-charts';
 import { ChartLine } from '../../types/chart';
 import { LINE_LABEL_RIGHT_OFFSET } from '../chart-constants';
@@ -8,6 +8,12 @@ interface UsePriceLinesArgs {
   candlestickSeriesRef: MutableRefObject<ISeriesApi<'Candlestick'> | null>;
   chartContainerRef: RefObject<HTMLDivElement>;
   lines: ChartLine[];
+  /**
+   * Shared map of line id → live `IPriceLine`, owned by ChartComponent so the
+   * drag handler (in `useChartLifecycle`) can mutate a line's price during a
+   * drag. This hook populates + reconciles it.
+   */
+  priceLineRefs: MutableRefObject<Map<string, IPriceLine>>;
 }
 
 /**
@@ -22,8 +28,8 @@ export function usePriceLines({
   candlestickSeriesRef,
   chartContainerRef,
   lines,
+  priceLineRefs,
 }: UsePriceLinesArgs) {
-  const priceLineRefs = useRef<Map<string, IPriceLine>>(new Map());
   const [linePositions, setLinePositions] = useState<Map<string, { top: number; right: number }>>(new Map());
 
   // Project each line's price to a container-relative delete-button position.

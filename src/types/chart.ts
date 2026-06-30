@@ -23,6 +23,18 @@ export interface ChartLine {
    * "deleted". Defaults to `true`.
    */
   deletable?: boolean;
+  /**
+   * Whether this line can be dragged to reprice it (when `onLineMove` is wired).
+   * Set `false` for derived/read-only lines (e.g. a trade overlay). Independent
+   * of `deletable`/`editable`. Defaults to `true`.
+   */
+  draggable?: boolean;
+  /**
+   * Whether double-clicking this line opens the edit dialog (when `onLineChange`
+   * is wired). Set `false` for derived/read-only lines. Independent of
+   * `deletable`/`draggable`. Defaults to `true`.
+   */
+  editable?: boolean;
 }
 
 /** A shaded horizontal price band (e.g. an MFE↔MAE excursion zone). */

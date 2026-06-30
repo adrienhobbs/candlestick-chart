@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { IChartApi, ISeriesApi, Time } from 'lightweight-charts';
+import { IChartApi, IPriceLine, ISeriesApi, Time } from 'lightweight-charts';
 import { OHLCVBar, ChartLine, ChartTrade, PriceBand, ChartTheme } from '../types/chart';
 import { DEFAULT_CHART_THEME, buildBaseChartLayoutOptions } from '../utils/chartTheme';
 import { IndicatorInstance } from '../indicators/core/types';
@@ -19,6 +19,7 @@ import { US_EQUITY_PRESET, type SessionsConfig } from '../sessions/sessions';
 import { useOhlcLegend } from './chart-hooks/useOhlcLegend';
 import OhlcLegend from './OhlcLegend';
 import type { OhlcLegendData } from './ohlcLegendData';
+import LineSettingsDialog from './LineSettingsDialog';
 
 /** An item in the chart's right-click context menu (see `contextMenuItems`). */
 export interface ContextMenuItem {
@@ -36,6 +37,19 @@ interface ChartComponentProps {
   onDeleteLine?: (lineId: string) => void;
   onAddLine?: (type: 'entry' | 'stopLoss' | 'takeProfit' | 'support' | 'resistance', price: number) => void;
   onClearAllLines?: () => void;
+  /**
+   * Drag a price line to reprice it. Fired (with the new price) when the drag is
+   * released — the host should update the line's `price` in `lines` to persist it.
+   * Wiring this makes every line draggable except those with `draggable: false`.
+   */
+  onLineMove?: (lineId: string, price: number) => void;
+  /**
+   * Double-click a price line to edit it. Opens the built-in `LineSettingsDialog`
+   * (label/color/style/width); this fires with the edited line on save — the host
+   * should merge it into `lines`. Wiring this makes every line editable except
+   * those with `editable: false`.
+   */
+  onLineChange?: (line: ChartLine) => void;
   /**
    * Customize the right-click menu items. Receives the clicked `price`; return the
    * items to show. When provided, this replaces the built-in (entry/stop/take-profit/
@@ -104,6 +118,8 @@ export default function ChartComponent({
   onDeleteLine,
   onAddLine,
   onClearAllLines,
+  onLineMove,
+  onLineChange,
   contextMenuItems,
   enableBarSelection = true,
   onBarClick,
@@ -136,6 +152,9 @@ export default function ChartComponent({
   const candlestickSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
   const volumeSeriesRef = useRef<ISeriesApi<'Histogram'> | null>(null);
   const seriesMarkersRef = useRef<any>(null);
+  // Shared with the price-lines hook (which populates it) + the lifecycle hook's
+  // drag handler (which mutates a line's price live during a drag).
+  const priceLineRefs = useRef<Map<string, IPriceLine>>(new Map());
   // Shared with the indicator hook + reset by the create-once teardown.
   const indicatorSeriesRef = useRef<Map<string, ISeriesApi<any>>>(new Map());
   const indicatorPaneIndexRef = useRef<Map<string, number>>(new Map());
@@ -151,12 +170,23 @@ export default function ChartComponent({
   // create-once effect's resize closure without going stale.
   const heightRef = useRef<number | undefined>(height);
   heightRef.current = height;
+  // Interactive-line state read inside the create-once lifecycle handlers via refs.
+  const linesRef = useRef<ChartLine[]>(lines);
+  linesRef.current = lines;
+  const onLineMoveRef = useRef(onLineMove);
+  onLineMoveRef.current = onLineMove;
+  const onLineChangeRef = useRef(onLineChange);
+  onLineChangeRef.current = onLineChange;
 
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; price: number } | null>(null);
   const [selectedBar, setSelectedBar] = useState<OHLCVBar | null>(null);
   const [spotlightPosition, setSpotlightPosition] = useState<{ x: number; width: number } | null>(null);
   const [tradePopupPos, setTradePopupPos] = useState<{ x: number } | null>(null);
+  // The line being edited (double-click → LineSettingsDialog), and the line
+  // currently being dragged (whose delete button is hidden until release).
+  const [editingLine, setEditingLine] = useState<ChartLine | null>(null);
+  const [draggingLineId, setDraggingLineId] = useState<string | null>(null);
 
   // Bar selection is "controlled" when `selectedBarTime` is passed — the click
   // handler then only notifies (via onBarClick) and lets the prop drive the
@@ -216,11 +246,17 @@ export default function ChartComponent({
     barSelectionControlled,
     onBarClick,
     lineEditEnabled,
+    priceLineRefs,
+    linesRef,
+    onLineMoveRef,
+    onLineChangeRef,
     sizeVolumePane,
     setIsLoadingMore,
     setContextMenu,
     setSelectedBar,
     setSpotlightPosition,
+    setEditingLine,
+    setDraggingLineId,
   });
 
   // [effect 3] Keep the live bars ref current for the non-reactive closures.
@@ -278,7 +314,7 @@ export default function ChartComponent({
   });
 
   // [effects 8 + 9] Price lines + floating delete-button positions.
-  const linePositions = usePriceLines({ chartRef, candlestickSeriesRef, chartContainerRef, lines });
+  const linePositions = usePriceLines({ chartRef, candlestickSeriesRef, chartContainerRef, lines, priceLineRefs });
 
   // [effect 10] Shaded price bands.
   const bandRects = usePriceBands({ chartRef, candlestickSeriesRef, priceBands });
@@ -421,6 +457,7 @@ export default function ChartComponent({
 
       {onDeleteLine && chartContainerRef.current && lines.map((line) => {
         if (line.deletable === false) return null; // read-only line (e.g. a trade overlay)
+        if (line.id === draggingLineId) return null; // mid-drag: host price is stale; reappears on release
         const pos = linePositions.get(line.id);
         if (!pos) return null;
 
@@ -516,6 +553,17 @@ export default function ChartComponent({
           )}
         </div>
       )}
+
+      <LineSettingsDialog
+        isOpen={editingLine !== null}
+        line={editingLine}
+        title="Edit Line"
+        onClose={() => setEditingLine(null)}
+        onSave={(line) => {
+          onLineChange?.(line);
+          setEditingLine(null);
+        }}
+      />
     </div>
   );
 }
