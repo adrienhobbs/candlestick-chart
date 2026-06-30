@@ -35,6 +35,17 @@ export interface ChartLine {
    * `deletable`/`draggable`. Defaults to `true`.
    */
   editable?: boolean;
+  /**
+   * Optional time bounds (epoch ms, matching `OHLCVBar.timestamp`). When BOTH
+   * `startTime` and `endTime` are set, the line renders as a finite SEGMENT
+   * spanning only `[startTime, endTime]` at its price (drawn on the canvas) and
+   * auto-hides when its window scrolls out of view — instead of the default
+   * infinite full-width price line. Bounded segments are read-only: they get no
+   * axis label, delete button, or drag/edit, and ignore `deletable`/`draggable`/
+   * `editable`. Endpoints should align to real bar timestamps.
+   */
+  startTime?: number;
+  endTime?: number;
 }
 
 /** A shaded horizontal price band (e.g. an MFE↔MAE excursion zone). */
@@ -46,6 +57,13 @@ export interface PriceBand {
   bottom: number;
   /** CSS color (use an rgba/low-opacity fill so candles show through). */
   color: string;
+  /**
+   * Optional time bounds (epoch ms). When BOTH set, the band renders as a finite
+   * BOX spanning `[startTime, endTime] × [top, bottom]` (auto-hides off-screen)
+   * instead of a full-width band. Endpoints should align to real bar timestamps.
+   */
+  startTime?: number;
+  endTime?: number;
 }
 
 export interface ChartTrade {

@@ -239,6 +239,7 @@ const bars: OHLCVBar[] = [
 | `focusTradeId` | `string \| null` | `null` | Scrolls/frames the matching trade into view |
 | `renderTradePopup` | `(trade: ChartTrade) => ReactNode` | - | Render a popup for the trade under the selected bar. See [Trade Markers & Popup](#trade-markers--popup) |
 | `priceBands` | `PriceBand[]` | `[]` | Shaded horizontal price bands (e.g. an MFE↔MAE zone) |
+| `onHoverBar` | `(timeMs: number \| null) => void` | - | Fired with the hovered bar's time (ms) as the crosshair moves; `null` when the cursor leaves. See [Interactive Lines](#interactive-lines) |
 | `timeZone` | `string` | viewer local | IANA timezone for axis ticks + crosshair labels |
 | `height` | `number` | auto-fill | Fixed chart height in px (omit to fill the container) |
 | `theme` | `Partial<ChartTheme>` | slate dark | Chart canvas colors — background, grid, axes, candles, volume. See [Theming](./theming.md) |
@@ -463,6 +464,35 @@ Both are gated per-line: a line with `draggable: false` can't be dragged, and on
   }
 />
 ```
+
+### Time-bounded overlays (segments + boxes)
+
+By default a `ChartLine` is an **infinite** horizontal price line and a `PriceBand` is a
+**full-width** shaded band. Give either one BOTH `startTime` and `endTime` (epoch ms,
+matching `OHLCVBar.timestamp`) and it instead renders as a **time-bounded** overlay drawn on
+the canvas — a line **segment** spanning `[startTime, endTime]` at its price, or a **box**
+spanning `[startTime, endTime] × [top, bottom]` — that **auto-hides when its window scrolls
+out of view**. This is the "position tool" look: anchor a trade's entry/stop/target + its
+MFE↔MAE band to the trade's bars so they appear only there.
+
+```tsx
+<ChartComponent
+  bars={bars}
+  lines={[
+    // bounded segment (read-only): spans only the trade window, hides when scrolled away
+    { id: 'entry', price: 158.2, color: '#9ca3af', title: 'Entry', lineStyle: 'solid',
+      startTime: entryMs, endTime: exitMs, deletable: false, draggable: false, editable: false },
+  ]}
+  priceBands={[
+    { id: 'mfeMae', top: 158.7, bottom: 157.4, color: 'rgba(59,130,246,0.12)',
+      startTime: entryMs, endTime: exitMs },
+  ]}
+/>
+```
+
+Bounded overlays are read-only (no axis label, delete button, drag, or edit) and draw an
+optional inline title at the segment's left end. Endpoints should align to real bar timestamps.
+Pair with `onHoverBar` to show a trade's overlays only while hovering its bars.
 
 ### Context Menu
 

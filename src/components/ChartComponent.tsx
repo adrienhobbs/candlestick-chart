@@ -15,6 +15,8 @@ import { useTradeMarkers } from './chart-hooks/useTradeMarkers';
 import { useSpotlight } from './chart-hooks/useSpotlight';
 import { usePopupPosition } from './chart-hooks/usePopupPosition';
 import { useSessions } from './chart-hooks/useSessions';
+import { useTradeOverlays } from './chart-hooks/useTradeOverlays';
+import { useHoverBar } from './chart-hooks/useHoverBar';
 import { US_EQUITY_PRESET, type SessionsConfig } from '../sessions/sessions';
 import { useOhlcLegend } from './chart-hooks/useOhlcLegend';
 import OhlcLegend from './OhlcLegend';
@@ -104,6 +106,12 @@ interface ChartComponentProps {
   /** Custom renderer for the crosshair OHLC legend (overrides the built-in default). */
   renderOhlcLegend?: (data: OhlcLegendData) => ReactNode;
   /**
+   * Fired with the hovered bar's time (epoch ms) as the crosshair moves, or `null`
+   * when the cursor leaves a bar. Lets the host drive hover-based UI — e.g. show a
+   * trade's bounded overlays while hovering its bars.
+   */
+  onHoverBar?: (timeMs: number | null) => void;
+  /**
    * Visual theme for the chart canvas (background, grid, axes, candles, volume).
    * A partial override of {@link DEFAULT_CHART_THEME}; re-applied live on change.
    */
@@ -134,6 +142,7 @@ export default function ChartComponent({
   sessions = false,
   showOhlcLegend = false,
   renderOhlcLegend,
+  onHoverBar,
   theme,
 }: ChartComponentProps) {
   // Merge the consumer's partial theme over the library default. `theme` should
@@ -313,11 +322,21 @@ export default function ChartComponent({
     bars,
   });
 
-  // [effects 8 + 9] Price lines + floating delete-button positions.
-  const linePositions = usePriceLines({ chartRef, candlestickSeriesRef, chartContainerRef, lines, priceLineRefs });
+  // Split into infinite (legacy createPriceLine / full-width div) vs time-bounded
+  // (segments / boxes drawn by the TradeOverlaysPrimitive). A bounded item sets BOTH
+  // startTime & endTime; bounded items auto-hide when scrolled out of view.
+  const isBounded = (x: { startTime?: number; endTime?: number }) =>
+    x.startTime != null && x.endTime != null;
+  const unboundedLines = useMemo(() => lines.filter((l) => !isBounded(l)), [lines]);
+  const boundedLines = useMemo(() => lines.filter(isBounded), [lines]);
+  const unboundedBands = useMemo(() => priceBands.filter((b) => !isBounded(b)), [priceBands]);
+  const boundedBands = useMemo(() => priceBands.filter(isBounded), [priceBands]);
 
-  // [effect 10] Shaded price bands.
-  const bandRects = usePriceBands({ chartRef, candlestickSeriesRef, priceBands });
+  // [effects 8 + 9] Infinite price lines + floating delete-button positions.
+  const linePositions = usePriceLines({ chartRef, candlestickSeriesRef, chartContainerRef, lines: unboundedLines, priceLineRefs });
+
+  // [effect 10] Shaded full-width price bands.
+  const bandRects = usePriceBands({ chartRef, candlestickSeriesRef, priceBands: unboundedBands });
 
   // [effects 10a + 10b] Session shading + day separators (custom canvas primitive).
   const resolvedSessions = useMemo<SessionsConfig | null>(
@@ -325,6 +344,12 @@ export default function ChartComponent({
     [sessions],
   );
   useSessions({ candlestickSeriesRef, config: resolvedSessions });
+
+  // Time-bounded trade overlays (segments + boxes); auto-hide off-screen.
+  useTradeOverlays({ candlestickSeriesRef, lines: boundedLines, bands: boundedBands });
+
+  // Surface the hovered bar time to the host (hover-driven overlays, etc.).
+  useHoverBar({ chartRef, onHoverBar });
 
   // [effect 10c] Crosshair OHLC legend (O/H/L/C/V + indicator values; idle = last bar).
   const ohlcLegendEnabled = showOhlcLegend || renderOhlcLegend != null;
@@ -455,7 +480,7 @@ export default function ChartComponent({
         )}
       </div>
 
-      {onDeleteLine && chartContainerRef.current && lines.map((line) => {
+      {onDeleteLine && chartContainerRef.current && unboundedLines.map((line) => {
         if (line.deletable === false) return null; // read-only line (e.g. a trade overlay)
         if (line.id === draggingLineId) return null; // mid-drag: host price is stale; reappears on release
         const pos = linePositions.get(line.id);

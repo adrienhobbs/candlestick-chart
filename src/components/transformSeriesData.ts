@@ -19,3 +19,22 @@ export function transformSeriesData(
     .map((d) => ({ time: d.time as Time, value: d[field] }))
     .filter((d) => isValid(d.value));
 }
+
+/**
+ * Like {@link transformSeriesData} but maps non-finite values to **whitespace**
+ * points (`{ time }`, no value) instead of dropping them — so a line series BREAKS
+ * at those times (lightweight-charts connects across dropped points but not across
+ * whitespace). Used by single-output line indicators that want gaps (e.g. a daily
+ * level that resets each trading day). Warm-up still renders identically (leading
+ * whitespace draws nothing).
+ */
+export function transformSeriesDataWithGaps(
+  data: IndicatorOutput[],
+  field: string,
+): Array<{ time: Time; value: number } | { time: Time }> {
+  return data.map((d) =>
+    Number.isFinite(d[field])
+      ? { time: d.time as Time, value: d[field] }
+      : { time: d.time as Time },
+  );
+}

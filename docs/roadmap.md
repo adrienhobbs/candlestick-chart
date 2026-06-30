@@ -9,6 +9,20 @@ Status legend: **▶ Next** · **◷ Deferred** · **○ Backlog**
 
 ---
 
+## ✅ Shipped (0.4.0)
+
+### Time-bounded overlays + hovered-bar callback
+`ChartLine` / `PriceBand` gain optional `startTime`/`endTime` (epoch ms): when both are set they
+render as a finite **segment** / **box** spanning only that window (via a new
+`TradeOverlaysPrimitive`) and **auto-hide when scrolled out of view** — the position-tool look for
+trade entry/stop/target + MFE↔MAE. New `onHoverBar(timeMs|null)` prop surfaces the crosshair's
+hovered bar so a host can show a trade's overlays only while hovering its bars. Also: indicator
+`renderConfig.priceLineVisible`/`lastValueVisible` (so a per-day level can drop the misleading
+full-width last-value line) and single-output **line indicators render gaps as whitespace** (break,
+not connect — clean per-day segments). Pure clip math in `overlay-geometry.ts`; primitive + hook
+mirror `SessionsPrimitive`/`useSessions`. (Partially addresses the deferred "Event overlays" item —
+same time-anchored primitive approach.)
+
 ## ✅ Shipped (0.3.2)
 
 ### Interactive price lines

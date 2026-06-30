@@ -7,6 +7,7 @@ import {
   ISeriesApi,
   LineData,
   LineSeries,
+  WhitespaceData,
 } from 'lightweight-charts';
 import { OHLCVBar } from '../../types/chart';
 import { IndicatorInstance } from '../../indicators/core/types';
@@ -14,7 +15,7 @@ import { indicatorRegistry } from '../../indicators/core/registry';
 import { indicatorCalculator } from '../../indicators/core/calculator';
 import { BandsPrimitive } from '../../indicators/primitives/BandsPrimitive';
 import { PALETTE, BAND_FILL } from '../../constants/colors';
-import { transformSeriesData } from '../transformSeriesData';
+import { transformSeriesData, transformSeriesDataWithGaps } from '../transformSeriesData';
 
 // Palette for multi-output indicators whose fields lack an explicit color setting.
 const MULTI_LINE_PALETTE = PALETTE;
@@ -93,11 +94,16 @@ export function useIndicatorSeries({
             color: indicator.settings.color || '#3b82f6',
             lineWidth: indicator.settings.lineWidth || 2,
             title: indicator.name,
+            // A per-day level resets/segments over time → the full-width last-value
+            // price line would misleadingly span the whole chart at the latest value.
+            priceLineVisible: definition.renderConfig.priceLineVisible ?? true,
+            lastValueVisible: definition.renderConfig.lastValueVisible ?? true,
           }, paneIndex);
-          // Drop warm-up / undefined points (e.g. an EMA's first `period` bars);
-          // lightweight-charts rejects NaN/non-finite line values.
-          const lineData = transformSeriesData(data, 'value');
-          series.setData(lineData as LineData[]);
+          // Non-finite points → whitespace so the line BREAKS there (not connects):
+          // warm-up renders identically, and a level that resets per day shows a clean
+          // segment per day instead of one connected line across the gaps.
+          const lineData = transformSeriesDataWithGaps(data, 'value');
+          series.setData(lineData as (LineData | WhitespaceData)[]);
           indicatorSeriesRef.current.set(indicator.id, series);
         } else if (definition.renderConfig.hasBandFill && definition.renderConfig.fillBands) {
           const { upper: upperField, lower: lowerField } = definition.renderConfig.fillBands;
@@ -204,8 +210,12 @@ export function useIndicatorSeries({
       if (definition.renderConfig.outputCount === 1) {
         const series = indicatorSeriesRef.current.get(indicator.id);
         if (series) {
-          const lineData = transformSeriesData(data, 'value');
-          series.setData(lineData as LineData[]);
+          // Line series break at gaps (whitespace); histogram/area keep the drop behavior.
+          if (definition.renderConfig.seriesType === 'line') {
+            series.setData(transformSeriesDataWithGaps(data, 'value') as (LineData | WhitespaceData)[]);
+          } else {
+            series.setData(transformSeriesData(data, 'value') as LineData[]);
+          }
         }
       } else if (definition.renderConfig.hasBandFill && definition.renderConfig.fillBands) {
         const { upper: upperField, lower: lowerField } = definition.renderConfig.fillBands;

@@ -55,6 +55,15 @@ export const RenderConfigSchema = z.object({
     upper: z.string(),
     lower: z.string(),
   }).optional(),
+  /**
+   * Show the series' last-value price line (the dotted horizontal line that spans
+   * the full chart width at the most recent value). Defaults to true. Set false for
+   * series whose value resets/segments over time (e.g. a per-day level) so the chart
+   * isn't dominated by one flat line at the latest value.
+   */
+  priceLineVisible: z.boolean().optional(),
+  /** Show the last-value axis label (the colored chip on the price scale). Defaults to true. */
+  lastValueVisible: z.boolean().optional(),
 });
 
 export type SettingFieldType = z.infer<typeof SettingFieldTypeSchema>;
