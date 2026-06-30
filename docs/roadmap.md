@@ -39,6 +39,10 @@ focus is workbench (research = historical, not live).
 
 ## ○ Backlog (unranked candidates)
 
+- **Interactive price lines** — (1) **drag a line to reprice** it (grab the line, move it, fire an
+  `onLineMove(id, price)` callback so the host can persist); (2) **double-click a line to edit** it
+  in a modal — reuse the existing `LineSettingsDialog` (label/color/style/width). Builds directly on
+  the current price-line system (createPriceLine + the delete-button portals + `LineSettingsDialog`).
 - **Drawing tools** — trendlines, rays, rectangles, fib retracement, and a measure tool
   (drag → %/price/bars/time). Scaffolding exists (price lines + context menu + persistence
   adapters); freeform drawing is the next layer. Persist via the indicator-persistence pattern.
