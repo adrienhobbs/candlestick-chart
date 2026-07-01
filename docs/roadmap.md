@@ -60,12 +60,26 @@ transitions / detected trigger firings) at timestamps. Deferred from the 0.3.0 s
 pending a decision on what the workbench feeds in (likely lane-engine domain events, not
 external earnings data). Reuses the `SessionsPrimitive` time-anchored drawing approach.
 
-### First-class realtime price syncing
-Primitives already exist (`useBarsData.subscribe`/`onBar`/`onTrade`, `AlpacaBarAdapter` WS,
-`MockAdapter` ticks, last-bar `update()` path). "First-class" = forming-bar tick aggregation,
-live price line + axis tag, bar-close countdown, connection-state surfaced as a prop/callback,
-reconnect gap-fill (REST backfill of missed bars), and rAF-throttled updates. Deferred while
-focus is workbench (research = historical, not live).
+### First-class realtime price syncing — *leading live-use candidate*
+candlekit already has the plumbing to stream bars — `useBarsData.subscribe`/`onBar`/`onTrade`, the
+`AlpacaBarAdapter` WS + `MockAdapter` ticks, and the incremental last-bar `update()` path. "First-class"
+is the polish that makes a live chart *feel* live:
+
+- **Forming-bar aggregation** — fold ticks into the current (open) bar between closes; roll to a fresh
+  bar at each boundary (needs the chart's timeframe → pairs with *Client-side timeframe aggregation*).
+- **Live price line + axis tag** — a horizontal line at last price with a colored axis label (up/down
+  vs prev close), updated per tick.
+- **Bar-close countdown** — time remaining in the forming bar (small overlay / axis annotation).
+- **Connection state as a prop/callback** — connecting / connected / reconnecting / stalled, so the host
+  can render stream health (mirrors the exec console's WS-health pattern).
+- **Reconnect gap-fill** — on WS reconnect, REST-backfill the bars missed during the gap and dedupe them
+  into the series (the historical fetch path already exists).
+- **rAF-throttled updates** — coalesce bursty ticks to one repaint per frame (never `setData` per tick).
+
+Deferred only because the workbench is research (historical, not live). **Promote to ▶ Next** the moment
+candlekit drives a live surface — e.g. the exec operator console showing a live open position, or a
+realtime demo tab. Most of the work is a `useRealtimeBars` hook + a live-price-line primitive; the
+adapters are done.
 
 ## ○ Backlog (unranked candidates)
 
@@ -83,6 +97,9 @@ focus is workbench (research = historical, not live).
 - **DX / infra** — a `defineIndicator()` helper (settings builders + Zod schemas already exist),
   PNG/SVG export (`chart.takeScreenshot()`), Storybook to replace the single demo page.
 - **Indicator-on-indicator** — e.g. RSI of EMA; compose calculators.
+- **Colored overlay labels** — per-label color on bounded segments/box (0.4.1 draws them one neutral
+  color); e.g. green `+R` / red `−R` on an MFE↔MAE box. Small: optional `*LabelColor` fields on
+  `PriceBand`/`ChartLine`, threaded into `TradeOverlaysPrimitive`.
 
 ---
 
