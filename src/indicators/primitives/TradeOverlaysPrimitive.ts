@@ -37,6 +37,8 @@ export interface TradeOverlayBox {
   borderColor?: string;
   topLabel?: string;
   bottomLabel?: string;
+  topLabelColor?: string;
+  bottomLabelColor?: string;
 }
 
 export interface TradeOverlaysConfig {
@@ -45,7 +47,7 @@ export interface TradeOverlaysConfig {
 }
 
 interface SegmentPx { x1: number; x2: number; y: number; color: string; lineWidth: number; lineStyle: string; title?: string }
-interface BoxPx { x1: number; x2: number; yTop: number; yBot: number; color: string; borderColor?: string; topLabel?: string; bottomLabel?: string }
+interface BoxPx { x1: number; x2: number; yTop: number; yBot: number; color: string; borderColor?: string; topLabel?: string; bottomLabel?: string; topLabelColor?: string; bottomLabelColor?: string }
 
 interface TradeOverlaysViewData {
   segments: SegmentPx[];
@@ -105,6 +107,7 @@ class TradeOverlaysPaneView {
         yBot: Math.max(yT as number, yB as number),
         color: b.color, borderColor: b.borderColor,
         topLabel: b.topLabel, bottomLabel: b.bottomLabel,
+        topLabelColor: b.topLabelColor, bottomLabelColor: b.bottomLabelColor,
       });
     }
 
@@ -166,14 +169,16 @@ class TradeOverlaysRenderer {
         }
         if (b.topLabel || b.bottomLabel) {
           ctx.save();
-          ctx.fillStyle = b.borderColor ?? '#cbd5e1';
+          const neutral = b.borderColor ?? '#cbd5e1';
           ctx.font = `${Math.round(10 * vpr)}px sans-serif`;
           const xText = Math.round(b.x1 * hpr) + Math.round(4 * hpr);
           if (b.topLabel) {
+            ctx.fillStyle = b.topLabelColor ?? neutral;
             ctx.textBaseline = 'top';
             ctx.fillText(b.topLabel, xText, Math.round(b.yTop * vpr) + Math.round(2 * vpr));
           }
           if (b.bottomLabel) {
+            ctx.fillStyle = b.bottomLabelColor ?? neutral;
             ctx.textBaseline = 'bottom';
             ctx.fillText(b.bottomLabel, xText, Math.round(b.yBot * vpr) - Math.round(2 * vpr));
           }

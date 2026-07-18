@@ -43,6 +43,8 @@ export function useTradeOverlays({ candlestickSeriesRef, lines, bands }: UseTrad
       color: b.color,
       topLabel: b.topLabel,
       bottomLabel: b.bottomLabel,
+      topLabelColor: b.topLabelColor,
+      bottomLabelColor: b.bottomLabelColor,
     })),
   }), [lines, bands]);
 

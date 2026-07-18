@@ -307,6 +307,8 @@ function AppContent() {
           endTime,
           topLabel: fmtR((mfe - entry) / risk),
           bottomLabel: fmtR((mae - entry) / risk),
+          topLabelColor: '#22c55e', // favorable MFE → green
+          bottomLabelColor: '#ef4444', // adverse MAE → red
         },
       ],
     };

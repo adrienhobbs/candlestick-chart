@@ -71,6 +71,13 @@ export interface PriceBand {
    */
   topLabel?: string;
   bottomLabel?: string;
+  /**
+   * Optional per-label CSS colors for `topLabel` / `bottomLabel` (e.g. green
+   * `+R` / red `−R`). Each defaults to the box's border color when unset, then
+   * to a neutral slate. Ignored for full-width (unbounded) bands.
+   */
+  topLabelColor?: string;
+  bottomLabelColor?: string;
 }
 
 export interface ChartTrade {

@@ -9,6 +9,14 @@ Status legend: **▶ Next** · **◷ Deferred** · **○ Backlog**
 
 ---
 
+## ✅ Shipped (0.4.2)
+
+### Colored overlay labels
+A time-bounded `PriceBand` (box) takes optional `topLabelColor` / `bottomLabelColor` (CSS colors) for its
+`topLabel` / `bottomLabel`, threaded into `TradeOverlaysPrimitive` — e.g. green `+R` (favorable MFE) / red
+`−R` (adverse MAE) on an MFE↔MAE excursion box. Each defaults to the box's border color, then a neutral
+slate, so existing bands are unchanged.
+
 ## ✅ Shipped (0.4.1)
 
 ### Bounded-box edge labels
@@ -97,9 +105,6 @@ adapters are done.
 - **DX / infra** — a `defineIndicator()` helper (settings builders + Zod schemas already exist),
   PNG/SVG export (`chart.takeScreenshot()`), Storybook to replace the single demo page.
 - **Indicator-on-indicator** — e.g. RSI of EMA; compose calculators.
-- **Colored overlay labels** — per-label color on bounded segments/box (0.4.1 draws them one neutral
-  color); e.g. green `+R` / red `−R` on an MFE↔MAE box. Small: optional `*LabelColor` fields on
-  `PriceBand`/`ChartLine`, threaded into `TradeOverlaysPrimitive`.
 
 ---
 
