@@ -4,9 +4,9 @@ import { indicatorRegistry } from './registry';
 import { indicatorCalculator } from './calculator';
 import { IndicatorCategory, ChartSeriesType, type IndicatorDefinition, type IndicatorInstance } from './types';
 
-const bars = (n: number): OHLCVBar[] =>
+const bars = (n: number, startMs = 1_700_000_000_000): OHLCVBar[] =>
   Array.from({ length: n }, (_, i) => ({
-    timestamp: 1_700_000_000_000 + i * 1000,
+    timestamp: startMs + i * 1000,
     open: 1,
     high: 1,
     low: 1,
@@ -67,6 +67,46 @@ describe('indicatorCalculator', () => {
     const inst = instance({ period: 5 });
     indicatorCalculator.calculate(inst, bars(10));
     indicatorCalculator.calculate(inst, bars(11));
+    expect(calls).toBe(2);
+  });
+
+  it('cache MISS: same bar COUNT but a different series recomputes (symbol/window swap)', () => {
+    // The regression this guards: paging by a fixed limit means a different
+    // symbol arrives with an identical bar count, and a count-keyed cache would
+    // serve the previous symbol's values over the new symbol's candles.
+    const inst = instance({ period: 5 });
+    indicatorCalculator.calculate(inst, bars(500));
+    indicatorCalculator.calculate(inst, bars(500, 1_900_000_000_000));
+    expect(calls).toBe(2);
+  });
+
+  it('cache MISS: the last bar mutating in place recomputes (live tick)', () => {
+    // A live bar updates its price while KEEPING its timestamp, so neither the
+    // count nor the endpoints move — only the last bar's OHLCV.
+    const inst = instance({ period: 5 });
+    const data = bars(10);
+    indicatorCalculator.calculate(inst, data);
+    const ticked = data.map((b, i) =>
+      i === data.length - 1 ? { ...b, close: b.close + 1, high: b.high + 1 } : b,
+    );
+    indicatorCalculator.calculate(inst, ticked);
+    expect(calls).toBe(2);
+  });
+
+  it('cache HIT: an equal-valued copy of the same series is still served from cache', () => {
+    // Identity is the DATA, not the array reference — re-deriving the same bars
+    // (a new array each render) must not force a recompute.
+    const inst = instance({ period: 5 });
+    indicatorCalculator.calculate(inst, bars(10));
+    const second = indicatorCalculator.calculate(inst, bars(10));
+    expect(calls).toBe(1);
+    expect(second).toHaveLength(10);
+  });
+
+  it('handles an empty series without throwing, and recomputes once bars arrive', () => {
+    const inst = instance({ period: 5 });
+    expect(indicatorCalculator.calculate(inst, [])).toEqual([]);
+    indicatorCalculator.calculate(inst, bars(10));
     expect(calls).toBe(2);
   });
 
