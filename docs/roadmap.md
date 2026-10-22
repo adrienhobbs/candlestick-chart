@@ -9,6 +9,20 @@ Status legend: **▶ Next** · **◷ Deferred** · **○ Backlog**
 
 ---
 
+## ✅ Shipped (0.7.0)
+
+### POINTS indicator series type
+- **`ChartSeriesType.POINTS`** — an indicator drawn as point markers on the price pane: a finite
+  output value is a point at that bar and price, NaN is none. `renderConfig.pointShape` /
+  `pointPosition` (`atPrice` | `aboveBar` | `belowBar`) / `pointSize`, overridable by same-named
+  instance settings; `pointFields` draws several named outputs, each in its own colour. Rendered
+  through one lightweight-charts markers plugin per field (`createSeriesMarkers`) on the candlestick
+  series, so points live in the indicator browser, settings dialog and persistence like any other
+  indicator, and never clobber the trade / `markers`-prop markers. Pure mapping in
+  `indicator-points.ts` (unit-tested), plus a hook test for teardown and coexistence.
+- **Built-in Swing Points** (`swingpoints`) — dots at swing highs / lows, `strength` bars each side.
+  Lagging: drawn at the pivot bar, confirmed `strength` bars later.
+
 ## ✅ Shipped (0.5.0)
 
 ### Free-standing markers, muted trades, bars replacement fix

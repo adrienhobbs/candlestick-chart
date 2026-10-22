@@ -13,7 +13,15 @@ export enum ChartSeriesType {
   LINE = 'line',
   HISTOGRAM = 'histogram',
   AREA = 'area',
+  /**
+   * Point markers on the price pane (one per bar with a finite value), drawn as
+   * candlestick series markers rather than a series of their own.
+   */
+  POINTS = 'points',
 }
+
+export const PointShapeSchema = z.enum(['circle', 'square', 'arrowUp', 'arrowDown']);
+export const PointPositionSchema = z.enum(['aboveBar', 'belowBar', 'atPrice']);
 
 export const SettingFieldTypeSchema = z.enum([
   'number',
@@ -64,6 +72,25 @@ export const RenderConfigSchema = z.object({
   priceLineVisible: z.boolean().optional(),
   /** Show the last-value axis label (the colored chip on the price scale). Defaults to true. */
   lastValueVisible: z.boolean().optional(),
+  /**
+   * POINTS only. The marker shape; defaults to 'circle'. An instance setting of
+   * the same name (e.g. a `select` setting) overrides it.
+   */
+  pointShape: PointShapeSchema.optional(),
+  /**
+   * POINTS only. 'atPrice' (default) centres the marker on the output value;
+   * 'aboveBar' / 'belowBar' place it off the candle and ignore the value's price.
+   * An instance setting of the same name overrides it.
+   */
+  pointPosition: PointPositionSchema.optional(),
+  /** POINTS only. Marker size in lightweight-charts marker units; defaults to 1. */
+  pointSize: z.number().positive().optional(),
+  /**
+   * POINTS only. The output fields drawn as points, each in its own colour
+   * (`<field>Color` setting, else `color` for `value`, else a palette slot).
+   * Defaults to `['value']` when `outputCount` is 1, else every field but `time`.
+   */
+  pointFields: z.array(z.string()).optional(),
 });
 
 export type SettingFieldType = z.infer<typeof SettingFieldTypeSchema>;
@@ -72,6 +99,8 @@ export type SettingField = z.infer<typeof SettingFieldSchema>;
 export type IndicatorSettings = z.infer<typeof IndicatorSettingsSchema>;
 export type IndicatorMetadata = z.infer<typeof IndicatorMetadataSchema>;
 export type RenderConfig = z.infer<typeof RenderConfigSchema>;
+export type PointShape = z.infer<typeof PointShapeSchema>;
+export type PointPosition = z.infer<typeof PointPositionSchema>;
 
 export interface IndicatorOutput {
   time: number;

@@ -1,45 +1,59 @@
 import { useEffect, type MutableRefObject } from 'react';
 import {
   AreaSeries,
+  createSeriesMarkers,
   HistogramData,
   HistogramSeries,
   IChartApi,
   ISeriesApi,
+  ISeriesMarkersPluginApi,
   LineData,
   LineSeries,
+  Time,
   WhitespaceData,
 } from 'lightweight-charts';
 import { OHLCVBar } from '../../types/chart';
-import { IndicatorInstance } from '../../indicators/core/types';
+import { IndicatorDefinition, IndicatorInstance, IndicatorOutput } from '../../indicators/core/types';
 import { indicatorRegistry } from '../../indicators/core/registry';
 import { indicatorCalculator } from '../../indicators/core/calculator';
 import { BandsPrimitive } from '../../indicators/primitives/BandsPrimitive';
-import { PALETTE, BAND_FILL } from '../../constants/colors';
+import { BAND_FILL } from '../../constants/colors';
 import { transformSeriesData, transformSeriesDataWithGaps } from '../transformSeriesData';
-
-// Palette for multi-output indicators whose fields lack an explicit color setting.
-const MULTI_LINE_PALETTE = PALETTE;
-
-// Color for a named output field of a multi-output indicator: prefer an explicit
-// `<field>Color` setting, fall back to the generic `color` for the primary
-// `value` series, else a stable palette slot.
-function fieldColor(settings: Record<string, any>, key: string, idx: number): string {
-  return (
-    settings[`${key}Color`] ||
-    (key === 'value' ? settings.color : undefined) ||
-    MULTI_LINE_PALETTE[idx % MULTI_LINE_PALETTE.length]
-  );
-}
+import { buildIndicatorPointMarkers, fieldColor, pointFieldsOf, resolvePointStyle } from '../indicator-points';
 
 // Output field names of a calculated indicator point (everything but `time`).
 function outputFieldKeys(point: Record<string, number>): string[] {
   return Object.keys(point).filter((k) => k !== 'time');
 }
 
+/** POINTS plugins are keyed `${instanceId}:${field}`. */
+const pointsKey = (instanceId: string, field: string) => `${instanceId}:${field}`;
+
+function setPointMarkers(
+  plugins: Map<string, ISeriesMarkersPluginApi<Time>>,
+  definition: IndicatorDefinition,
+  indicator: IndicatorInstance,
+  data: IndicatorOutput[],
+): void {
+  const style = resolvePointStyle(definition.renderConfig, indicator.settings);
+  pointFieldsOf(definition.renderConfig, data).forEach((field, idx) => {
+    plugins
+      .get(pointsKey(indicator.id, field))
+      ?.setMarkers(buildIndicatorPointMarkers(data, field, style, fieldColor(indicator.settings, field, idx)));
+  });
+}
+
 interface UseIndicatorSeriesArgs {
   chartRef: MutableRefObject<IChartApi | null>;
+  candlestickSeriesRef: MutableRefObject<ISeriesApi<'Candlestick'> | null>;
   barsRef: MutableRefObject<OHLCVBar[]>;
   indicatorSeriesRef: MutableRefObject<Map<string, ISeriesApi<any>>>;
+  /**
+   * POINTS indicators' markers plugins on the candlestick series, one per drawn
+   * output field. Separate from the chart's trade/host markers plugin, so points
+   * never replace those markers (lightweight-charts allows several per series).
+   */
+  indicatorMarkersRef: MutableRefObject<Map<string, ISeriesMarkersPluginApi<Time>>>;
   indicatorPaneIndexRef: MutableRefObject<Map<string, number>>;
   nextPaneIndexRef: MutableRefObject<number>;
   indicators: IndicatorInstance[];
@@ -55,8 +69,10 @@ interface UseIndicatorSeriesArgs {
  */
 export function useIndicatorSeries({
   chartRef,
+  candlestickSeriesRef,
   barsRef,
   indicatorSeriesRef,
+  indicatorMarkersRef,
   indicatorPaneIndexRef,
   nextPaneIndexRef,
   indicators,
@@ -69,6 +85,14 @@ export function useIndicatorSeries({
       chartRef.current?.removeSeries(series);
     });
     indicatorSeriesRef.current.clear();
+    indicatorMarkersRef.current.forEach((plugin) => {
+      try {
+        plugin.detach();
+      } catch {
+        // series already disposed (chart.remove during teardown) — nothing to detach.
+      }
+    });
+    indicatorMarkersRef.current.clear();
     indicatorPaneIndexRef.current.clear();
     nextPaneIndexRef.current = 2;
 
@@ -80,6 +104,18 @@ export function useIndicatorSeries({
       if (!data || data.length === 0) return;
 
       const seriesType = definition.renderConfig.seriesType;
+
+      // Points sit on the candles, so they are always on the price pane.
+      if (seriesType === 'points') {
+        const candles = candlestickSeriesRef.current;
+        if (!candles) return;
+        pointFieldsOf(definition.renderConfig, data).forEach((field) => {
+          indicatorMarkersRef.current.set(pointsKey(indicator.id, field), createSeriesMarkers(candles, []));
+        });
+        setPointMarkers(indicatorMarkersRef.current, definition, indicator, data);
+        return;
+      }
+
       const isOverlay = definition.renderConfig.overlay !== false;
       const paneIndex = isOverlay ? 0 : nextPaneIndexRef.current;
 
@@ -207,7 +243,9 @@ export function useIndicatorSeries({
       const data = indicatorCalculator.calculate(indicator, barsRef.current);
       if (!data || data.length === 0) return;
 
-      if (definition.renderConfig.outputCount === 1) {
+      if (definition.renderConfig.seriesType === 'points') {
+        setPointMarkers(indicatorMarkersRef.current, definition, indicator, data);
+      } else if (definition.renderConfig.outputCount === 1) {
         const series = indicatorSeriesRef.current.get(indicator.id);
         if (series) {
           // Line series break at gaps (whitespace); histogram/area keep the drop behavior.

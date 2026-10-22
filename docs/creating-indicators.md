@@ -70,7 +70,7 @@ export const MyIndicator: IndicatorDefinition = {
 
   // 3. Render Configuration
   renderConfig: {
-    seriesType: ChartSeriesType.LINE,     // LINE, HISTOGRAM, or AREA
+    seriesType: ChartSeriesType.LINE,     // LINE, HISTOGRAM, AREA, or POINTS
     outputCount: 1,                        // Number of lines (1 for single, 3 for Bollinger, etc.)
     // priceLineVisible: false,            // (line, optional) hide the full-width last-value line —
                                            //   use for a value that resets/segments over time (e.g. a
@@ -214,6 +214,58 @@ renderConfig: {
   outputCount: 1,
 }
 ```
+
+### POINTS
+Dots (or squares / arrows) at individual bars on the price pane: pivots, signals,
+anything that is an event at a bar rather than a continuous value.
+
+```typescript
+renderConfig: {
+  seriesType: ChartSeriesType.POINTS,
+  outputCount: 1,
+  overlay: true,              // ignored: points always sit on the price pane
+  pointShape: 'circle',       // 'circle' | 'square' | 'arrowUp' | 'arrowDown' (default 'circle')
+  pointPosition: 'atPrice',   // 'atPrice' | 'aboveBar' | 'belowBar' (default 'atPrice')
+  pointSize: 1,               // lightweight-charts marker size units (default 1)
+}
+
+calculate: (bars, settings) => bars.map((bar) => ({
+  time: bar.timestamp / 1000,
+  value: isSignal(bar) ? bar.low : NaN,   // NaN = no point on this bar
+}));
+```
+
+- A **finite** `value` is a point at that bar and price; **NaN** (or any non-finite
+  value) means no point.
+- `'atPrice'` centres the marker on the value. `'aboveBar'` / `'belowBar'` put it
+  just off the candle and ignore the value's price (the value still decides
+  whether the bar gets a point).
+- Colour comes from the instance's `color` setting, as for LINE.
+- `pointShape`, `pointPosition` and `pointSize` can also be **instance settings** of
+  the same name (e.g. a `select` setting for the shape), which override the
+  `renderConfig` values when valid.
+- **Several point sets** from one indicator: list the fields in `pointFields`. Each
+  field gets its own colour from a `<field>Color` setting, else a palette slot.
+  `value` is still required by `IndicatorOutput`; set it to `NaN` if you don't draw it.
+
+```typescript
+renderConfig: {
+  seriesType: ChartSeriesType.POINTS,
+  outputCount: 2,
+  overlay: true,
+  pointFields: ['high', 'low'],   // colours: settings.highColor, settings.lowColor
+}
+```
+
+Points are drawn as lightweight-charts series markers on the candlestick series,
+through their own markers plugin per field (`createSeriesMarkers`), so they never
+replace the chart's trade or `markers`-prop markers. They have no series, so they
+don't appear in the OHLC legend's indicator values. Text labels are not supported.
+
+The built-in **Swing Points** (`swingpoints`) is a complete example: dots at swing
+highs and lows. It is a lagging marker. A pivot at bar `i` is only confirmed
+`strength` bars later, but the point is drawn at bar `i`, so the newest `strength`
+bars never carry one.
 
 ### Multiple Outputs
 

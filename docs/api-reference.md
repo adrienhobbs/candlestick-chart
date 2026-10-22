@@ -368,8 +368,33 @@ enum ChartSeriesType {
   LINE = 'line',
   HISTOGRAM = 'histogram',
   AREA = 'area',
+  POINTS = 'points',   // markers on the price pane; NaN = no point
 }
 ```
+
+### RenderConfig
+
+```typescript
+interface RenderConfig {
+  seriesType: ChartSeriesType;
+  outputCount: number;            // default 1
+  overlay: boolean;               // default true; POINTS always draw on the price pane
+  hasBandFill?: boolean;
+  fillBands?: { upper: string; lower: string };
+  priceLineVisible?: boolean;     // default true
+  lastValueVisible?: boolean;     // default true
+  // POINTS only:
+  pointShape?: 'circle' | 'square' | 'arrowUp' | 'arrowDown';   // default 'circle'
+  pointPosition?: 'aboveBar' | 'belowBar' | 'atPrice';          // default 'atPrice'
+  pointSize?: number;             // default 1 (marker size units)
+  pointFields?: string[];         // default ['value'] (outputCount 1) or every field but time
+}
+```
+
+Validated by `RenderConfigSchema` (Zod), with `PointShapeSchema` / `PointPositionSchema`
+for the POINTS options. `pointShape`, `pointPosition` and `pointSize` set as instance
+settings override the `renderConfig` values. See
+[Creating Indicators → POINTS](./creating-indicators.md#points).
 
 ### SettingFieldType
 

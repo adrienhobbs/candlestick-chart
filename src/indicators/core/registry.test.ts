@@ -4,6 +4,7 @@ import {
   registerBuiltInIndicators,
   IndicatorCategory,
   ChartSeriesType,
+  RenderConfigSchema,
   type IndicatorDefinition,
 } from '../index';
 
@@ -50,6 +51,27 @@ describe('indicatorRegistry', () => {
     warn.mockRestore();
   });
 
+  it('accepts a POINTS definition and its render options', () => {
+    const renderConfig = {
+      seriesType: ChartSeriesType.POINTS,
+      outputCount: 2,
+      overlay: true,
+      pointShape: 'square' as const,
+      pointPosition: 'belowBar' as const,
+      pointSize: 2,
+      pointFields: ['high', 'low'],
+    };
+    expect(RenderConfigSchema.parse(renderConfig)).toEqual(renderConfig);
+    expect(RenderConfigSchema.safeParse({ ...renderConfig, pointShape: 'star' }).success).toBe(false);
+    expect(RenderConfigSchema.safeParse({ ...renderConfig, pointPosition: 'atPriceTop' }).success).toBe(false);
+    expect(RenderConfigSchema.safeParse({ ...renderConfig, pointSize: 0 }).success).toBe(false);
+
+    indicatorRegistry.register({ ...makeDef('pts', 'Points'), renderConfig });
+    const instance = indicatorRegistry.createInstance('pts');
+    expect(indicatorRegistry.get('pts')!.renderConfig.seriesType).toBe('points');
+    expect(instance.settings.period).toBe(5);
+  });
+
   it('createInstance throws for an unknown definition id', () => {
     expect(() => indicatorRegistry.createInstance('missing')).toThrow();
   });
@@ -72,9 +94,10 @@ describe('indicatorRegistry', () => {
     expect(indicatorRegistry.validateSettings('val', {})).toBe(false); // missing
   });
 
-  it('registerBuiltInIndicators registers all 22 built-ins', () => {
+  it('registerBuiltInIndicators registers all 23 built-ins', () => {
     registerBuiltInIndicators();
-    expect(indicatorRegistry.getAll()).toHaveLength(22);
+    expect(indicatorRegistry.getAll()).toHaveLength(23);
+    expect(indicatorRegistry.get('swingpoints')?.renderConfig.seriesType).toBe(ChartSeriesType.POINTS);
     // a few spot checks
     expect(indicatorRegistry.get('sma')).toBeDefined();
     expect(indicatorRegistry.get('ema')).toBeDefined();

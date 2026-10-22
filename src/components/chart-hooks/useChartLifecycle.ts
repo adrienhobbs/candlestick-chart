@@ -6,6 +6,7 @@ import {
   HistogramSeries,
   IChartApi,
   ISeriesApi,
+  ISeriesMarkersPluginApi,
   Time,
 } from 'lightweight-charts';
 import { OHLCVBar, ChartLine, ChartTheme } from '../../types/chart';
@@ -28,6 +29,7 @@ interface UseChartLifecycleArgs {
   seriesMarkersRef: MutableRefObject<any>;
   // Shared refs cleared on teardown (also owned by the bars-sync / indicator hooks).
   indicatorSeriesRef: MutableRefObject<Map<string, ISeriesApi<any>>>;
+  indicatorMarkersRef: MutableRefObject<Map<string, ISeriesMarkersPluginApi<Time>>>;
   indicatorPaneIndexRef: MutableRefObject<Map<string, number>>;
   nextPaneIndexRef: MutableRefObject<number>;
   previousBarsRef: MutableRefObject<OHLCVBar[]>;
@@ -84,6 +86,7 @@ export function useChartLifecycle({
   volumeSeriesRef,
   seriesMarkersRef,
   indicatorSeriesRef,
+  indicatorMarkersRef,
   indicatorPaneIndexRef,
   nextPaneIndexRef,
   previousBarsRef,
@@ -448,6 +451,8 @@ export function useChartLifecycle({
       // `removeSeries` on these now-disposed series via the *new* chart and throw
       // "Value is undefined". Only bites when an indicator is present at mount.
       indicatorSeriesRef.current.clear();
+      // POINTS markers plugins lived on the disposed candlestick series.
+      indicatorMarkersRef.current.clear();
       indicatorPaneIndexRef.current.clear();
       nextPaneIndexRef.current = 2;
       // Reset the bars-diff trackers too. They persist across a remount, so the

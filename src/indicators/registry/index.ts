@@ -21,6 +21,7 @@ import { DonchianChannelsIndicator } from './donchian';
 import { ROCIndicator } from './roc';
 import { StochRSIIndicator } from './stochrsi';
 import { WMAIndicator } from './wma';
+import { SwingPointsIndicator, swingPoints } from './swingpoints';
 
 export function registerBuiltInIndicators(): void {
   indicatorRegistry.register(SMAIndicator);
@@ -45,6 +46,7 @@ export function registerBuiltInIndicators(): void {
   indicatorRegistry.register(ROCIndicator);
   indicatorRegistry.register(StochRSIIndicator);
   indicatorRegistry.register(WMAIndicator);
+  indicatorRegistry.register(SwingPointsIndicator);
 }
 
 export {
@@ -70,4 +72,6 @@ export {
   ROCIndicator,
   StochRSIIndicator,
   WMAIndicator,
+  SwingPointsIndicator,
+  swingPoints,
 };

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { IChartApi, IPriceLine, ISeriesApi, Time } from 'lightweight-charts';
+import { IChartApi, IPriceLine, ISeriesApi, ISeriesMarkersPluginApi, Time } from 'lightweight-charts';
 import { OHLCVBar, ChartLine, ChartMarker, ChartRailMarker, ChartSignpost, ChartTrade, PriceBand, ChartTheme } from '../types/chart';
 import { DEFAULT_CHART_THEME, buildBaseChartLayoutOptions } from '../utils/chartTheme';
 import { IndicatorInstance } from '../indicators/core/types';
@@ -192,6 +192,7 @@ export default function ChartComponent({
   const priceLineRefs = useRef<Map<string, IPriceLine>>(new Map());
   // Shared with the indicator hook + reset by the create-once teardown.
   const indicatorSeriesRef = useRef<Map<string, ISeriesApi<any>>>(new Map());
+  const indicatorMarkersRef = useRef<Map<string, ISeriesMarkersPluginApi<Time>>>(new Map());
   const indicatorPaneIndexRef = useRef<Map<string, number>>(new Map());
   const nextPaneIndexRef = useRef<number>(2);
   // Shared with the bars-sync hook + reset by the create-once teardown.
@@ -265,6 +266,7 @@ export default function ChartComponent({
     volumeSeriesRef,
     seriesMarkersRef,
     indicatorSeriesRef,
+    indicatorMarkersRef,
     indicatorPaneIndexRef,
     nextPaneIndexRef,
     previousBarsRef,
@@ -394,8 +396,10 @@ export default function ChartComponent({
   // [effects 11 + 12] Indicator series setup + data refresh.
   useIndicatorSeries({
     chartRef,
+    candlestickSeriesRef,
     barsRef,
     indicatorSeriesRef,
+    indicatorMarkersRef,
     indicatorPaneIndexRef,
     nextPaneIndexRef,
     indicators,
