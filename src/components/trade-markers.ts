@@ -38,6 +38,7 @@ export function buildTradeMarkers(
 ): SeriesMarker<Time>[] {
   const markers: SeriesMarker<Time>[] = [];
   for (const t of trades) {
+    if (t.markerStyle === 'price') continue; // drawn as ▶/◀ by the annotations primitive
     const selected = t.id === selectedTradeId;
     const base = t.outcome === 'win' ? colors.win : colors.loss;
     const color = t.muted ? (fadeHex(base, MUTED_MARKER_ALPHA) ?? MUTED_FALLBACK) : base;
@@ -57,7 +58,7 @@ export function buildTradeMarkers(
 }
 
 /** Latest timestamp in ascending `times` at or before `ms`, or null when `ms` precedes them all. */
-function snapDown(times: number[], ms: number): number | null {
+export function snapDown(times: number[], ms: number): number | null {
   let lo = 0;
   let hi = times.length - 1;
   let found: number | null = null;
@@ -83,10 +84,12 @@ export function buildChartMarkers(markers: ChartMarker[], barTimes: number[]): S
   const out: SeriesMarker<Time>[] = [];
   for (const m of markers) {
     if (!Number.isFinite(m.time)) continue;
+    if (isCustomDrawnMarker(m)) continue; // the annotations primitive draws it
     const at = snapDown(barTimes, m.time);
     if (at === null) continue;
     const time = (at / 1000) as Time;
-    const shape = m.shape ?? 'circle';
+    // isCustomDrawnMarker already took ▶/◀ out; what's left is a lightweight-charts shape.
+    const shape = (m.shape ?? 'circle') as 'circle' | 'square' | 'arrowUp' | 'arrowDown';
     const common = {
       id: m.id,
       time,
@@ -108,5 +111,26 @@ export function buildChartMarkers(markers: ChartMarker[], barTimes: number[]): S
     }
   }
   out.sort((a, b) => (a.time as number) - (b.time as number));
+  return out;
+}
+
+/** Shapes lightweight-charts can't draw (▶ ◀, outlines): the annotations primitive draws these. */
+export function isCustomDrawnMarker(m: ChartMarker): boolean {
+  return m.hollow === true || m.shape === 'arrowRight' || m.shape === 'arrowLeft';
+}
+
+/** Pure: a `markerStyle: 'price'` trade's entry ▶ and exit ◀, at its prices, colored by outcome. */
+export function buildTradePriceMarkers(
+  trades: ChartTrade[],
+  colors: MarkerColors = { win: WIN, loss: LOSS },
+): ChartMarker[] {
+  const out: ChartMarker[] = [];
+  for (const t of trades) {
+    if (t.markerStyle !== 'price') continue;
+    const base = t.outcome === 'win' ? colors.win : colors.loss;
+    const color = t.muted ? (fadeHex(base, MUTED_MARKER_ALPHA) ?? MUTED_FALLBACK) : base;
+    out.push({ id: `trade:${t.id}:entry`, time: t.entryTime, price: t.entryPrice, shape: 'arrowRight', color });
+    out.push({ id: `trade:${t.id}:exit`, time: t.exitTime, price: t.exitPrice, shape: 'arrowLeft', color });
+  }
   return out;
 }

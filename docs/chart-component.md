@@ -589,8 +589,13 @@ interface ChartTrade {
   exitPrice: number;
   outcome: 'win' | 'loss';
   muted?: boolean;     // draw faded (outcome hue at reduced opacity)
+  markerStyle?: 'arrows' | 'price'; // default 'arrows'
 }
 ```
+
+- **`markerStyle: 'price'`** — instead of the ▲/▼ arrows under/over the bars, draws a
+  ▶ pointing at `entryPrice` on the entry bar and a ◀ pointing at `exitPrice` on the
+  exit bar, so the mark shows where the fill was as well as when.
 
 - **`muted`** — draws the trade's markers in its outcome color at reduced opacity,
   for a trade shown for context rather than reviewed (refused, counterfactual,
@@ -631,12 +636,18 @@ interface ChartMarker {
   time: number;        // ms — snapped DOWN to the bar at or before it; dropped if before the first bar
   price?: number;      // draw at this exact price (position defaults to 'atPriceMiddle')
   position?: 'aboveBar' | 'belowBar' | 'inBar' | 'atPriceTop' | 'atPriceBottom' | 'atPriceMiddle';
-  shape?: 'circle' | 'square' | 'arrowUp' | 'arrowDown';   // default 'circle'
+  shape?: 'circle' | 'square' | 'arrowUp' | 'arrowDown' | 'arrowRight' | 'arrowLeft'; // default 'circle'
   color: string;
   text?: string;
   size?: number;
+  hollow?: boolean;    // outline only
 }
 ```
+
+`arrowRight` (▶) sits left of its bar pointing at the price and `arrowLeft` (◀) right
+of it — an entry and an exit fill. They and `hollow` markers (e.g. the same event in a
+counterfactual book) are drawn by candlekit's own primitive, not lightweight-charts'
+series markers; their `text` is not drawn.
 
 ```tsx
 const markers = useMemo<ChartMarker[]>(() => [
@@ -650,6 +661,38 @@ const markers = useMemo<ChartMarker[]>(() => [
 Markers merge with the trade markers and the selected-bar marker (all sorted by
 time). Price-positioned markers need lightweight-charts **≥ 5.1**. Memoize the
 array — a new identity re-sets every marker.
+
+### Signposts and the event rail
+
+Two places for annotations that would otherwise crowd the candles:
+
+```typescript
+interface ChartSignpost {     // signposts={...}
+  id: string;
+  time: number;               // ms, snapped down to a bar
+  label: string;              // e.g. 'ENTRY 330.12'
+  color: string;              // pill fill (hex gets a tinted line)
+}
+
+interface ChartRailMarker {   // railMarkers={...}
+  id: string;
+  time: number;               // ms, snapped down to a bar
+  color: string;
+  shape?: 'circle' | 'square' | 'triangleUp' | 'triangleDown' | 'diamond';
+  hollow?: boolean;
+  label?: string;             // 1–2 characters, drawn when there is room
+}
+```
+
+- **Signposts** — a dashed vertical line at the bar with a label pill on the chart's
+  top edge. Pills that would overlap stack into a second (then third) row.
+- **Event rail** — a 16 px strip along the bottom of the price pane, shown only when
+  `railMarkers` is non-empty, for events that aren't a price (an excursion extreme's
+  bar, a timer that would have fired). Marks sharing a bar sit side by side. The
+  strip lives inside the default bottom price-scale margin, so candles don't overlap
+  it unless the price scale is dragged.
+
+Memoize both arrays.
 
 ### LineChart — overlay multiple line series
 

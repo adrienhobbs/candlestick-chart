@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { IChartApi, IPriceLine, ISeriesApi, Time } from 'lightweight-charts';
-import { OHLCVBar, ChartLine, ChartMarker, ChartTrade, PriceBand, ChartTheme } from '../types/chart';
+import { OHLCVBar, ChartLine, ChartMarker, ChartRailMarker, ChartSignpost, ChartTrade, PriceBand, ChartTheme } from '../types/chart';
 import { DEFAULT_CHART_THEME, buildBaseChartLayoutOptions } from '../utils/chartTheme';
 import { IndicatorInstance } from '../indicators/core/types';
 import { MIN_VOLUME_PANE_HEIGHT, VOLUME_PANE_FRACTION } from './chart-constants';
@@ -12,6 +12,7 @@ import { usePriceLines } from './chart-hooks/usePriceLines';
 import { usePriceBands } from './chart-hooks/usePriceBands';
 import { useIndicatorSeries } from './chart-hooks/useIndicatorSeries';
 import { useTradeMarkers } from './chart-hooks/useTradeMarkers';
+import { useAnnotations } from './chart-hooks/useAnnotations';
 import { useSpotlight } from './chart-hooks/useSpotlight';
 import { usePopupPosition } from './chart-hooks/usePopupPosition';
 import { useSessions } from './chart-hooks/useSessions';
@@ -33,6 +34,8 @@ export interface ContextMenuItem {
 
 // A stable default: a fresh `[]` per render would re-run the markers effect every render.
 const NO_MARKERS: ChartMarker[] = [];
+const NO_SIGNPOSTS: ChartSignpost[] = [];
+const NO_RAIL: ChartRailMarker[] = [];
 
 interface ChartComponentProps {
   bars: OHLCVBar[];
@@ -79,6 +82,17 @@ interface ChartComponentProps {
    * Memoize the array: a new identity re-sets every marker.
    */
   markers?: ChartMarker[];
+  /**
+   * Vertical lines with a label pill on the chart's top edge (e.g. ENTRY / EXIT), for
+   * the few events worth words on the chart. Memoize the array.
+   */
+  signposts?: ChartSignpost[];
+  /**
+   * Marks on the event rail, a strip along the bottom of the price pane, for events
+   * that aren't a price (a timer that would have fired, an excursion extreme). The
+   * strip appears only when this is non-empty. Memoize the array.
+   */
+  railMarkers?: ChartRailMarker[];
   selectedTradeId?: string | null;
   renderTradePopup?: (trade: ChartTrade) => ReactNode;
   /**
@@ -143,6 +157,8 @@ export default function ChartComponent({
   selectedBarTime,
   trades = [],
   markers = NO_MARKERS,
+  signposts = NO_SIGNPOSTS,
+  railMarkers = NO_RAIL,
   selectedTradeId = null,
   renderTradePopup,
   height,
@@ -395,6 +411,18 @@ export default function ChartComponent({
     selectedTradeId,
     selectedBar,
     enableBarSelection,
+    resolvedTheme,
+  });
+
+  // [effect 13b] What series markers can't draw: ▶/◀ and hollow marks, price-style
+  // trade entries/exits, signposts, the event rail.
+  useAnnotations({
+    candlestickSeriesRef,
+    bars,
+    trades,
+    markers,
+    signposts,
+    rail: railMarkers,
     resolvedTheme,
   });
 

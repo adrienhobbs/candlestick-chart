@@ -93,6 +93,12 @@ export interface ChartTrade {
    * refused / counterfactual / co-fired trade. Defaults to `false`.
    */
   muted?: boolean;
+  /**
+   * `arrows` (default): an up arrow under the entry bar and a down arrow over the exit
+   * bar. `price`: a ▶ pointing at `entryPrice` on the entry bar and a ◀ pointing at
+   * `exitPrice` on the exit bar, so the mark says where the fill was, not just when.
+   */
+  markerStyle?: 'arrows' | 'price';
 }
 
 /**
@@ -118,14 +124,54 @@ export interface ChartMarker {
    * `atPrice*` position without a `price` falls back to `aboveBar`.
    */
   position?: 'aboveBar' | 'belowBar' | 'inBar' | 'atPriceTop' | 'atPriceBottom' | 'atPriceMiddle';
-  /** Defaults to `circle`. */
-  shape?: 'circle' | 'square' | 'arrowUp' | 'arrowDown';
+  /**
+   * Defaults to `circle`. `arrowRight` (▶) sits left of the bar pointing at its
+   * price, `arrowLeft` (◀) right of it: an entry and an exit fill.
+   */
+  shape?: 'circle' | 'square' | 'arrowUp' | 'arrowDown' | 'arrowRight' | 'arrowLeft';
   /** CSS color. */
   color: string;
   /** Short label drawn beside the marker. */
   text?: string;
   /** Marker size multiplier (lightweight-charts default 1). */
   size?: number;
+  /**
+   * Draw the outline only — e.g. a counterfactual of a filled marker (the same event
+   * in another book). `arrowRight`/`arrowLeft` and hollow markers are drawn by the
+   * library's own primitive; their `text` is not drawn.
+   */
+  hollow?: boolean;
+}
+
+/**
+ * A vertical marker line at a bar with a label pill on the chart's top edge, for the
+ * few events that deserve words on the chart (an entry, an exit). Pills never sit on
+ * candles; pills that would overlap stack into a second row.
+ */
+export interface ChartSignpost {
+  id: string;
+  /** Epoch ms, snapped down to a bar like `ChartMarker.time`. */
+  time: number;
+  label: string;
+  /** CSS color (hex for a tinted line) of the pill and its line. */
+  color: string;
+}
+
+/**
+ * A small mark on the event rail, a strip along the bottom of the price pane: for
+ * time-anchored events that aren't a price on the chart (a timer that would have
+ * fired, an excursion extreme), kept off the candles.
+ */
+export interface ChartRailMarker {
+  id: string;
+  /** Epoch ms, snapped down to a bar. */
+  time: number;
+  color: string;
+  /** Defaults to `circle`. */
+  shape?: 'circle' | 'square' | 'triangleUp' | 'triangleDown' | 'diamond';
+  hollow?: boolean;
+  /** One or two characters drawn beside the mark when there is room. */
+  label?: string;
 }
 
 /**

@@ -13,7 +13,7 @@ export type { LineChartSeries, LineChartProps } from './components/LineChart';
 export type { OhlcLegendData, OhlcLegendIndicator } from './components/ohlcLegendData';
 
 // Types
-export type { OHLCVBar, ChartLine, ChartMarker, ChartTrade, PriceBand, ChartTheme, IndicatorPanel } from './types/chart';
+export type { OHLCVBar, ChartLine, ChartMarker, ChartTrade, ChartSignpost, ChartRailMarker, PriceBand, ChartTheme, IndicatorPanel } from './types/chart';
 
 // Session shading (config + US-equity preset)
 export { US_EQUITY_PRESET } from './sessions/sessions';
