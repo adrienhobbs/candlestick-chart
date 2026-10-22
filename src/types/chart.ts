@@ -87,6 +87,45 @@ export interface ChartTrade {
   entryPrice: number;
   exitPrice: number;
   outcome: 'win' | 'loss';
+  /**
+   * Draw this trade's markers faded (its outcome color at reduced opacity) — for a
+   * trade that is shown for context but isn't the result being reviewed, e.g. a
+   * refused / counterfactual / co-fired trade. Defaults to `false`.
+   */
+  muted?: boolean;
+}
+
+/**
+ * A free-standing series marker (circle / square / arrow, optional text) at a bar,
+ * for anything time-anchored that isn't a trade's entry/exit: an excursion
+ * extreme, an order fill, a virtual exit, a signal.
+ */
+export interface ChartMarker {
+  id: string;
+  /**
+   * Epoch ms. Snapped DOWN to the latest bar at or before it (so a fill at 10:37
+   * lands on the 10:35 bar of a 5-minute chart); a marker before the first bar is
+   * dropped.
+   */
+  time: number;
+  /**
+   * When set, the marker is drawn at this exact price (position defaults to
+   * `atPriceMiddle`) instead of above/below the bar.
+   */
+  price?: number;
+  /**
+   * Defaults to `atPriceMiddle` when `price` is set, else `aboveBar`. An
+   * `atPrice*` position without a `price` falls back to `aboveBar`.
+   */
+  position?: 'aboveBar' | 'belowBar' | 'inBar' | 'atPriceTop' | 'atPriceBottom' | 'atPriceMiddle';
+  /** Defaults to `circle`. */
+  shape?: 'circle' | 'square' | 'arrowUp' | 'arrowDown';
+  /** CSS color. */
+  color: string;
+  /** Short label drawn beside the marker. */
+  text?: string;
+  /** Marker size multiplier (lightweight-charts default 1). */
+  size?: number;
 }
 
 /**

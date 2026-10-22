@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { IChartApi, IPriceLine, ISeriesApi, Time } from 'lightweight-charts';
-import { OHLCVBar, ChartLine, ChartTrade, PriceBand, ChartTheme } from '../types/chart';
+import { OHLCVBar, ChartLine, ChartMarker, ChartTrade, PriceBand, ChartTheme } from '../types/chart';
 import { DEFAULT_CHART_THEME, buildBaseChartLayoutOptions } from '../utils/chartTheme';
 import { IndicatorInstance } from '../indicators/core/types';
 import { MIN_VOLUME_PANE_HEIGHT, VOLUME_PANE_FRACTION } from './chart-constants';
@@ -30,6 +30,9 @@ export interface ContextMenuItem {
   /** Render in a destructive style (e.g. a "Clear all" action). */
   danger?: boolean;
 }
+
+// A stable default: a fresh `[]` per render would re-run the markers effect every render.
+const NO_MARKERS: ChartMarker[] = [];
 
 interface ChartComponentProps {
   bars: OHLCVBar[];
@@ -70,6 +73,12 @@ interface ChartComponentProps {
    */
   selectedBarTime?: number | null;
   trades?: ChartTrade[];
+  /**
+   * Free-standing markers (circle / square / arrow + optional text), each snapped
+   * down to a bar and drawn at its `price` when given, else above/below the bar.
+   * Memoize the array: a new identity re-sets every marker.
+   */
+  markers?: ChartMarker[];
   selectedTradeId?: string | null;
   renderTradePopup?: (trade: ChartTrade) => ReactNode;
   /**
@@ -133,6 +142,7 @@ export default function ChartComponent({
   onBarClick,
   selectedBarTime,
   trades = [],
+  markers = NO_MARKERS,
   selectedTradeId = null,
   renderTradePopup,
   height,
@@ -376,10 +386,12 @@ export default function ChartComponent({
     bars,
   });
 
-  // [effect 13] Trade + selection markers.
+  // [effect 13] Trade, host and selection markers.
   useTradeMarkers({
     seriesMarkersRef,
+    bars,
     trades,
+    markers,
     selectedTradeId,
     selectedBar,
     enableBarSelection,

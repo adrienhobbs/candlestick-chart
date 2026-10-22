@@ -9,6 +9,23 @@ Status legend: **▶ Next** · **◷ Deferred** · **○ Backlog**
 
 ---
 
+## ✅ Shipped (0.5.0)
+
+### Free-standing markers, muted trades, bars replacement fix
+- **`markers` prop** (`ChartMarker[]`) — circle / square / arrow markers with optional text at any
+  time, snapped down to a bar, drawn at an exact `price` (`atPriceTop/Middle/Bottom`) or
+  above/below the bar. Merged with the trade + selection markers. Pure `buildChartMarkers`
+  (unit-tested). Needs lightweight-charts ≥ 5.1 (peer range raised to `^5.1.0`).
+- **`ChartTrade.muted`** — a trade's markers in its outcome hue at reduced opacity, for context
+  trades (refused / counterfactual / co-fired) beside the reviewed ones.
+- **Fix: replacing `bars`** with a shorter series, a shifted window, or a different series on the
+  same timestamps now redraws. Previously only the first load or a longer series called `setData`
+  (everything else patched the last bar), so hosts had to remount the chart. Pure `planBarsSync`
+  (unit-tested).
+
+Partially addresses the deferred *Event overlays* item (point events as markers; vertical event
+lines are still open).
+
 ## ✅ Shipped (0.4.2)
 
 ### Colored overlay labels

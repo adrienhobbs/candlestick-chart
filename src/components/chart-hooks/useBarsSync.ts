@@ -1,6 +1,7 @@
 import { useEffect, type Dispatch, type MutableRefObject, type SetStateAction } from 'react';
 import { CandlestickData, HistogramData, ISeriesApi, Time } from 'lightweight-charts';
 import { OHLCVBar, ChartTheme } from '../../types/chart';
+import { planBarsSync } from '../bars-sync-plan';
 
 interface UseBarsSyncArgs {
   candlestickSeriesRef: MutableRefObject<ISeriesApi<'Candlestick'> | null>;
@@ -15,8 +16,8 @@ interface UseBarsSyncArgs {
 
 /**
  * Sync `bars` into the candlestick + volume series, diffing against the previous
- * bars to choose a full `setData` (initial load / new bars) vs. a single-bar
- * `update` (last bar changed). Owns the bars-diff trackers shared with the
+ * bars (`planBarsSync`) to choose a full `setData` vs. a single-bar `update`
+ * (only the last bar changed). Owns the bars-diff trackers shared with the
  * create-once teardown (which resets them for StrictMode's double-mount).
  */
 export function useBarsSync({
@@ -43,19 +44,14 @@ export function useBarsSync({
     }, [] as OHLCVBar[]);
 
 
-    const previousBars = previousBarsRef.current;
-    const isInitialLoad = previousBars.length === 0;
-    const hasNewBars = uniqueBars.length > previousBars.length;
-    const lastBarChanged = uniqueBars.length > 0 && previousBars.length > 0 &&
-      (uniqueBars[uniqueBars.length - 1].timestamp === previousBars[previousBars.length - 1].timestamp);
-
+    const plan = planBarsSync(previousBarsRef.current, uniqueBars);
 
     if (isLoadingRef.current && uniqueBars.length > previousBarsLengthRef.current) {
       isLoadingRef.current = false;
       setIsLoadingMore(false);
     }
 
-    if (isInitialLoad || hasNewBars) {
+    if (plan === 'set') {
       const candleData: CandlestickData[] = uniqueBars.map((bar) => ({
         time: (bar.timestamp / 1000) as Time,
         open: bar.open,
@@ -72,7 +68,7 @@ export function useBarsSync({
 
       candlestickSeriesRef.current.setData(candleData);
       volumeSeriesRef.current.setData(volumeData);
-    } else if (lastBarChanged && uniqueBars.length > 0 && !hasNewBars) {
+    } else if (plan === 'update') {
       const lastBar = uniqueBars[uniqueBars.length - 1];
       const candleUpdate: CandlestickData = {
         time: (lastBar.timestamp / 1000) as Time,

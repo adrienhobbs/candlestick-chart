@@ -238,6 +238,7 @@ const bars: OHLCVBar[] = [
 | `onBarClick` | `(bar: OHLCVBar \| null) => void` | - | Callback when bar is clicked or deselected |
 | `selectedBarTime` | `number \| null` | uncontrolled | Externally control the selected bar (spotlight) by ms timestamp — lets a parent move the selection (e.g. arrow keys). See [Bar Selection](#bar-selection) |
 | `trades` | `ChartTrade[]` | `[]` | Trades to mark on the chart (entry/exit arrows, colored by win/loss) |
+| `markers` | `ChartMarker[]` | `[]` | Free-standing markers (circle/square/arrow + text), snapped to bars, optionally at a price. See [Markers](#markers) |
 | `selectedTradeId` | `string \| null` | `null` | Highlights + labels the matching trade's markers |
 | `focusTradeId` | `string \| null` | `null` | Scrolls/frames the matching trade into view |
 | `renderTradePopup` | `(trade: ChartTrade) => ReactNode` | - | Render a popup for the trade under the selected bar. See [Trade Markers & Popup](#trade-markers--popup) |
@@ -587,9 +588,13 @@ interface ChartTrade {
   entryPrice: number;
   exitPrice: number;
   outcome: 'win' | 'loss';
+  muted?: boolean;     // draw faded (outcome hue at reduced opacity)
 }
 ```
 
+- **`muted`** — draws the trade's markers in its outcome color at reduced opacity,
+  for a trade shown for context rather than reviewed (refused, counterfactual,
+  co-fired). A non-hex theme color falls back to a neutral fade.
 - **`selectedTradeId`** — the matching trade's markers are emphasized and labeled
   (`entry`/`exit` text).
 - **`focusTradeId`** — scrolls/frames the matching trade into view (pairs with
@@ -614,6 +619,37 @@ interface ChartTrade {
   )}
 />
 ```
+
+### Markers
+
+`markers` draws free-standing series markers for anything time-anchored that isn't a
+trade's entry/exit — an excursion extreme, an order fill, a virtual exit, a signal.
+
+```typescript
+interface ChartMarker {
+  id: string;
+  time: number;        // ms — snapped DOWN to the bar at or before it; dropped if before the first bar
+  price?: number;      // draw at this exact price (position defaults to 'atPriceMiddle')
+  position?: 'aboveBar' | 'belowBar' | 'inBar' | 'atPriceTop' | 'atPriceBottom' | 'atPriceMiddle';
+  shape?: 'circle' | 'square' | 'arrowUp' | 'arrowDown';   // default 'circle'
+  color: string;
+  text?: string;
+  size?: number;
+}
+```
+
+```tsx
+const markers = useMemo<ChartMarker[]>(() => [
+  { id: 'mfe', time: mfe.tsMs, price: mfe.price, color: '#10b981', text: 'MFE' },
+  { id: 'fill', time: fill.atMs, price: fill.price, shape: 'square', color: '#a855f7' },
+], [mfe, fill]);
+
+<ChartComponent bars={bars} trades={trades} markers={markers} />
+```
+
+Markers merge with the trade markers and the selected-bar marker (all sorted by
+time). Price-positioned markers need lightweight-charts **≥ 5.1**. Memoize the
+array — a new identity re-sets every marker.
 
 ### LineChart — overlay multiple line series
 

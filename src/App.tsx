@@ -14,7 +14,7 @@ import {
   registerBuiltInIndicators,
   createPersistenceAdapter,
 } from './index';
-import type { OHLCVBar, ChartTrade, ChartLine, LineChartSeries } from './index';
+import type { OHLCVBar, ChartTrade, ChartLine, ChartMarker, LineChartSeries } from './index';
 // NOTE: ChartAPIProvider / useChartAPIContext are NOT part of the public barrel
 // (`./index`), so they must still be imported from the context module directly.
 import { ChartAPIProvider, useChartAPIContext } from './contexts/ChartAPIContext';
@@ -250,7 +250,8 @@ function AppContent() {
       mk('t1', at(0.06), at(0.12), 'win'),
       mk('t2', at(0.24), at(0.30), 'loss'),
       mk('t3', at(0.44), at(0.52), 'win'),
-      mk('t4', at(0.64), at(0.70), 'loss'),
+      // A context trade (e.g. refused / counterfactual): drawn faded.
+      { ...mk('t4', at(0.64), at(0.70), 'loss'), muted: true },
       mk('t5', at(0.82), at(0.90), 'win'),
     ];
   }, [bars]);
@@ -272,9 +273,11 @@ function AppContent() {
 
   // Time-bounded trade overlays (entry/stop/target segments + a labeled MFE↔MAE box)
   // anchored to the displayed trade's window — so they auto-hide when scrolled away.
-  const { tradeLines, tradeBands } = useMemo(() => {
+  const { tradeLines, tradeBands, tradeMarkers } = useMemo(() => {
     const trade = demoTrades.find((t) => t.id === displayedTradeId);
-    if (!trade || bars.length === 0) return { tradeLines: [] as ChartLine[], tradeBands: [] };
+    if (!trade || bars.length === 0) {
+      return { tradeLines: [] as ChartLine[], tradeBands: [], tradeMarkers: [] as ChartMarker[] };
+    }
     const PAD = 2;
     const ei = bars.findIndex((b) => b.timestamp === trade.entryTime);
     const xi = bars.findIndex((b) => b.timestamp === trade.exitTime);
@@ -311,6 +314,12 @@ function AppContent() {
           bottomLabelColor: '#ef4444', // adverse MAE → red
         },
       ],
+      // Free-standing markers at an exact price (here the excursion extremes, at
+      // the middle of the trade for the demo).
+      tradeMarkers: [
+        { id: 'mfe', time: bars[Math.round((Math.max(ei, 0) + Math.max(xi, 0)) / 2)].timestamp, price: mfe, color: '#22c55e', text: 'MFE' },
+        { id: 'mae', time: bars[Math.max(ei, 0)].timestamp, price: mae, color: '#ef4444', shape: 'square', text: 'MAE' },
+      ] as ChartMarker[],
     };
   }, [displayedTradeId, demoTrades, bars]);
 
@@ -453,6 +462,7 @@ function AppContent() {
             indicators={indicators}
             lines={[...lines, ...tradeLines]}
             priceBands={tradeBands}
+            markers={tradeMarkers}
             onDeleteLine={removeLine}
             onAddLine={addLineByType}
             onClearAllLines={clearAllLines}
