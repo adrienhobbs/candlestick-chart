@@ -3,6 +3,7 @@ import { X } from 'lucide-react';
 import { IndicatorInstance } from '../indicators/core/types';
 import { indicatorRegistry } from '../indicators/core/registry';
 import IndicatorSettingsForm from './IndicatorSettingsForm';
+import { useDialogEscape } from './useDialogEscape';
 
 interface SettingsDialogProps {
   isOpen: boolean;
@@ -24,6 +25,8 @@ export default function SettingsDialog({
       setSettings({ ...indicator.settings });
     }
   }, [indicator]);
+
+  useDialogEscape(isOpen && indicator != null, onClose);
 
   if (!isOpen || !indicator) return null;
 

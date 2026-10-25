@@ -1,13 +1,67 @@
 import { useEffect, useMemo, useRef, type MutableRefObject } from 'react';
 import { ISeriesApi } from 'lightweight-charts';
-import { ChartLine, PriceBand } from '../../types/chart';
+import { ChartLine, OHLCVBar, PriceBand } from '../../types/chart';
 import {
   TradeOverlaysPrimitive,
   type TradeOverlaysConfig,
 } from '../../indicators/primitives/TradeOverlaysPrimitive';
+import { snapSpan } from '../trade-markers';
+
+/** Ascending, deduped bar timestamps (ms). */
+export function ascendingBarTimes(bars: OHLCVBar[]): number[] {
+  const times = Array.from(new Set(bars.map((b) => b.timestamp)));
+  times.sort((a, b) => a - b);
+  return times;
+}
+
+/**
+ * Bounded lines/bands → the primitive's config, each span snapped onto the bars
+ * (the primitive can only place a real bar time). A span ending before the first
+ * bar is dropped.
+ */
+export function buildTradeOverlaysConfig(
+  lines: ChartLine[],
+  bands: PriceBand[],
+  barTimes: number[],
+): TradeOverlaysConfig {
+  const segments: TradeOverlaysConfig['segments'] = [];
+  for (const l of lines) {
+    const span = snapSpan(barTimes, l.startTime as number, l.endTime as number);
+    if (!span) continue;
+    segments.push({
+      id: l.id,
+      price: l.price,
+      startSec: Math.floor(span.start / 1000),
+      endSec: Math.floor(span.end / 1000),
+      color: l.color,
+      lineWidth: l.lineWidth ?? 2,
+      lineStyle: l.lineStyle ?? 'solid',
+      title: l.title,
+    });
+  }
+  const boxes: TradeOverlaysConfig['boxes'] = [];
+  for (const b of bands) {
+    const span = snapSpan(barTimes, b.startTime as number, b.endTime as number);
+    if (!span) continue;
+    boxes.push({
+      id: b.id,
+      top: b.top,
+      bottom: b.bottom,
+      startSec: Math.floor(span.start / 1000),
+      endSec: Math.floor(span.end / 1000),
+      color: b.color,
+      topLabel: b.topLabel,
+      bottomLabel: b.bottomLabel,
+      topLabelColor: b.topLabelColor,
+      bottomLabelColor: b.bottomLabelColor,
+    });
+  }
+  return { segments, boxes };
+}
 
 interface UseTradeOverlaysArgs {
   candlestickSeriesRef: MutableRefObject<ISeriesApi<'Candlestick'> | null>;
+  bars: OHLCVBar[];
   /** Bounded lines (both startTime & endTime set) → segments. */
   lines: ChartLine[];
   /** Bounded bands (both startTime & endTime set) → boxes. */
@@ -19,34 +73,16 @@ interface UseTradeOverlaysArgs {
  * overlays). Mirrors {@link useSessions}: attach-once (toggled by enabled/disabled),
  * apply-options in place on data change — never re-attach (would stack duplicates).
  */
-export function useTradeOverlays({ candlestickSeriesRef, lines, bands }: UseTradeOverlaysArgs) {
+export function useTradeOverlays({ candlestickSeriesRef, bars, lines, bands }: UseTradeOverlaysArgs) {
   const primitiveRef = useRef<TradeOverlaysPrimitive | null>(null);
 
+  const barTimes = useMemo(() => ascendingBarTimes(bars), [bars]);
+
   // Normalize to the primitive's seconds-based config (defaults resolved).
-  const config = useMemo<TradeOverlaysConfig>(() => ({
-    segments: lines.map((l) => ({
-      id: l.id,
-      price: l.price,
-      startSec: Math.floor((l.startTime as number) / 1000),
-      endSec: Math.floor((l.endTime as number) / 1000),
-      color: l.color,
-      lineWidth: l.lineWidth ?? 2,
-      lineStyle: l.lineStyle ?? 'solid',
-      title: l.title,
-    })),
-    boxes: bands.map((b) => ({
-      id: b.id,
-      top: b.top,
-      bottom: b.bottom,
-      startSec: Math.floor((b.startTime as number) / 1000),
-      endSec: Math.floor((b.endTime as number) / 1000),
-      color: b.color,
-      topLabel: b.topLabel,
-      bottomLabel: b.bottomLabel,
-      topLabelColor: b.topLabelColor,
-      bottomLabelColor: b.bottomLabelColor,
-    })),
-  }), [lines, bands]);
+  const config = useMemo<TradeOverlaysConfig>(
+    () => buildTradeOverlaysConfig(lines, bands, barTimes),
+    [lines, bands, barTimes],
+  );
 
   const configRef = useRef(config);
   configRef.current = config;

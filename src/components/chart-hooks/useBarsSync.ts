@@ -35,14 +35,10 @@ export function useBarsSync({
 
     const sortedBars = [...bars].sort((a, b) => a.timestamp - b.timestamp);
 
-    const uniqueBars = sortedBars.reduce((acc, bar) => {
-      const exists = acc.find(b => b.timestamp === bar.timestamp);
-      if (!exists) {
-        acc.push(bar);
-      }
-      return acc;
-    }, [] as OHLCVBar[]);
-
+    // Sorted, so a duplicate timestamp is always adjacent; keep the first.
+    const uniqueBars = sortedBars.filter(
+      (bar, i) => i === 0 || bar.timestamp !== sortedBars[i - 1].timestamp,
+    );
 
     const plan = planBarsSync(previousBarsRef.current, uniqueBars);
 

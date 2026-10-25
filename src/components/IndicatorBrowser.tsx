@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react';
 import { Search, X, Plus } from 'lucide-react';
 import { indicatorRegistry } from '../indicators/core/registry';
 import { IndicatorCategory, IndicatorDefinition } from '../indicators/core/types';
+import { useDialogEscape } from './useDialogEscape';
 
 interface IndicatorBrowserProps {
   isOpen: boolean;
@@ -41,6 +42,8 @@ export default function IndicatorBrowser({
 
     return indicators;
   }, [searchQuery, selectedCategory]);
+
+  useDialogEscape(isOpen, onClose);
 
   if (!isOpen) return null;
 

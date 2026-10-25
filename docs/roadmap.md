@@ -9,6 +9,25 @@ Status legend: **▶ Next** · **◷ Deferred** · **○ Backlog**
 
 ---
 
+## ✅ Shipped (0.8.0)
+
+### Host ergonomics
+- **Loads under Node.** `fast-technical-indicators` (CommonJS behind its `import` condition) is
+  bundled into `dist/`, so `import('@adrienhobbs/candlekit')` works in Node (host unit tests, SSR).
+  `build:lib` checks it.
+- **Fills its container.** With no `height` the chart's wrappers take the parent's height and the
+  container is observed, so a flex or fixed-height parent no longer needs its own ResizeObserver.
+  The volume pane re-sizes with it.
+- **Stable defaults** for `indicators` / `lines` / `trades` / `priceBands` (module-level empties).
+- **Bounded lines and bands snap to bars**, like markers do.
+- **`createPersistenceAdapter('localStorage', { key })`** — one indicator set per chart.
+- **Escape closes the innermost dialog only** (`IndicatorBrowser`, `SettingsDialog`,
+  `LineSettingsDialog`): it is consumed in the window capture phase, so a host modal that closes
+  on Escape stays open.
+- **`focusTradeId` framing keyed on what it frames** (the trade's entry/exit bars), not on array
+  identity: no more snapping back to the trade after a host re-render or a load-more.
+- **Swing Points `plotAt: 'confirmation'`** — draw each pivot on the bar it became known.
+
 ## ✅ Shipped (0.7.0)
 
 ### POINTS indicator series type
@@ -94,10 +113,10 @@ change% + indicator values; idle = last bar). `useOhlcLegend` + `OhlcLegend` + p
 ## ◷ Deferred
 
 ### Event overlays
-Event markers/lines (earnings, splits, news, FOMC, or lane-engine domain events like regime
-transitions / detected trigger firings) at timestamps. Deferred from the 0.3.0 session work
-pending a decision on what the workbench feeds in (likely lane-engine domain events, not
-external earnings data). Reuses the `SessionsPrimitive` time-anchored drawing approach.
+Mostly covered: `markers` (0.5.0), `signposts` and the event rail (0.6.0) draw events at
+timestamps, and lane-engine feeds its own (firings, exit-observer fires, excursion extremes).
+What is left is a built-in source of external calendar events (earnings, splits, FOMC), which no
+host has asked for yet.
 
 ### First-class realtime price syncing — *leading live-use candidate*
 candlekit already has the plumbing to stream bars — `useBarsData.subscribe`/`onBar`/`onTrade`, the
@@ -115,10 +134,11 @@ is the polish that makes a live chart *feel* live:
   into the series (the historical fetch path already exists).
 - **rAF-throttled updates** — coalesce bursty ticks to one repaint per frame (never `setData` per tick).
 
-Deferred only because the workbench is research (historical, not live). **Promote to ▶ Next** the moment
-candlekit drives a live surface — e.g. the exec operator console showing a live open position, or a
-realtime demo tab. Most of the work is a `useRealtimeBars` hook + a live-price-line primitive; the
-adapters are done.
+Originally deferred because the workbench is research (historical, not live). The lane-engine
+console's watchlist chart is now a live surface: it folds polled snapshot prices into the last bar
+itself and relies on the `update()` path. That makes this the next candidate once that chart needs
+more than a moving last bar (live price line, bar-close countdown, stream state). Most of the work is
+a `useRealtimeBars` hook + a live-price-line primitive; the adapters are done.
 
 ## ○ Backlog (unranked candidates)
 

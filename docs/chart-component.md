@@ -239,13 +239,13 @@ const bars: OHLCVBar[] = [
 | `selectedBarTime` | `number \| null` | uncontrolled | Externally control the selected bar (spotlight) by ms timestamp — lets a parent move the selection (e.g. arrow keys). See [Bar Selection](#bar-selection) |
 | `trades` | `ChartTrade[]` | `[]` | Trades to mark on the chart (entry/exit arrows, colored by win/loss) |
 | `markers` | `ChartMarker[]` | `[]` | Free-standing markers (circle/square/arrow + text), snapped to bars, optionally at a price. See [Markers](#markers) |
-| `selectedTradeId` | `string \| null` | `null` | Highlights + labels the matching trade's markers |
-| `focusTradeId` | `string \| null` | `null` | Scrolls/frames the matching trade into view |
+| `selectedTradeId` | `string \| null` | `null` | Adds the "+entry"/"exit" text labels beside the matching trade's arrow markers |
+| `focusTradeId` | `string \| null` | `null` | Scrolls/frames the matching trade into view. Re-frames only when the id changes or the bars its entry/exit land on change, so a re-created `trades` array, a live tick, or older bars loaded on scroll-back keep the user's view |
 | `renderTradePopup` | `(trade: ChartTrade) => ReactNode` | - | Render a popup for the trade under the selected bar. See [Trade Markers & Popup](#trade-markers--popup) |
 | `priceBands` | `PriceBand[]` | `[]` | Shaded horizontal price bands (e.g. an MFE↔MAE zone) |
 | `onHoverBar` | `(timeMs: number \| null) => void` | - | Fired with the hovered bar's time (ms) as the crosshair moves; `null` when the cursor leaves. See [Interactive Lines](#interactive-lines) |
 | `timeZone` | `string` | viewer local | IANA timezone for axis ticks + crosshair labels |
-| `height` | `number` | auto-fill | Fixed chart height in px (omit to fill the container) |
+| `height` | `number` | auto-fill | Fixed chart height in px. Omit to fill the parent's height (tracked with a ResizeObserver); a parent with no definite height gets 600px |
 | `theme` | `Partial<ChartTheme>` | slate dark | Chart canvas colors — background, grid, axes, candles, volume. See [Theming](./theming.md) |
 
 > **Theming the chart and its modals** — the chart canvas takes a `theme` prop;
@@ -495,8 +495,10 @@ MFE↔MAE band to the trade's bars so they appear only there.
 ```
 
 Bounded overlays are read-only (no axis label, delete button, drag, or edit) and draw an
-optional inline title at the segment's left end. Endpoints should align to real bar timestamps.
-Pair with `onHoverBar` to show a trade's overlays only while hovering its bars.
+optional inline title at the segment's left end. Each end snaps down to the bar containing it
+(a start before the first bar clamps to it; a span that ends before the first bar is dropped; a
+span inside one bar extends to the next bar), so times recorded off the bar grid, or a 5-minute
+trade on an hourly chart, still draw. Pair with `onHoverBar` to show a trade's overlays only while hovering its bars.
 
 A bounded **box** also takes optional `topLabel` / `bottomLabel` strings, drawn inside the box at
 its top / bottom edge — e.g. the favorable `+R` and adverse `−R` of an MFE↔MAE excursion.

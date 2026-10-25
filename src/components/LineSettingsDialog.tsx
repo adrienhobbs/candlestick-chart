@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { X } from 'lucide-react';
 import { ChartLine } from '../types/chart';
+import { useDialogEscape } from './useDialogEscape';
 
 interface LineSettingsDialogProps {
   isOpen: boolean;
@@ -34,6 +35,8 @@ export default function LineSettingsDialog({
   useEffect(() => {
     setDraft(line);
   }, [line]);
+
+  useDialogEscape(isOpen && line != null, onClose);
 
   if (!isOpen || !draft) return null;
 

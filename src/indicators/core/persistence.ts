@@ -6,8 +6,23 @@ export interface PersistenceAdapter {
   deleteIndicator(id: string): Promise<void>;
 }
 
+/** The localStorage key used when none is given. */
+export const DEFAULT_INDICATORS_STORAGE_KEY = 'chart_indicators';
+
+export interface PersistenceAdapterOptions {
+  /**
+   * localStorage key (default `chart_indicators`). Give each chart that should keep
+   * its own indicator set its own key; charts sharing a key share one set.
+   */
+  key?: string;
+}
+
 export class LocalStoragePersistenceAdapter implements PersistenceAdapter {
-  private storageKey = 'chart_indicators';
+  private storageKey: string;
+
+  constructor(storageKey: string = DEFAULT_INDICATORS_STORAGE_KEY) {
+    this.storageKey = storageKey;
+  }
 
   async saveIndicators(indicators: IndicatorInstance[]): Promise<void> {
     try {
@@ -57,11 +72,12 @@ export class NoOpPersistenceAdapter implements PersistenceAdapter {
 }
 
 export function createPersistenceAdapter(
-  kind: 'noop' | 'localStorage'
+  kind: 'noop' | 'localStorage',
+  options: PersistenceAdapterOptions = {},
 ): PersistenceAdapter {
   switch (kind) {
     case 'localStorage':
-      return new LocalStoragePersistenceAdapter();
+      return new LocalStoragePersistenceAdapter(options.key);
     case 'noop':
       return new NoOpPersistenceAdapter();
     default:

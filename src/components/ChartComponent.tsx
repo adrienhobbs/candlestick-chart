@@ -32,7 +32,12 @@ export interface ContextMenuItem {
   danger?: boolean;
 }
 
-// A stable default: a fresh `[]` per render would re-run the markers effect every render.
+// Stable defaults: a fresh `[]` per render would re-run the effects keyed on these
+// every render (and, for `trades`, re-frame the focused trade).
+const NO_INDICATORS: IndicatorInstance[] = [];
+const NO_LINES: ChartLine[] = [];
+const NO_TRADES: ChartTrade[] = [];
+const NO_BANDS: PriceBand[] = [];
 const NO_MARKERS: ChartMarker[] = [];
 const NO_SIGNPOSTS: ChartSignpost[] = [];
 const NO_RAIL: ChartRailMarker[] = [];
@@ -144,8 +149,8 @@ interface ChartComponentProps {
 export default function ChartComponent({
   bars,
   onLoadMoreData,
-  indicators = [],
-  lines = [],
+  indicators = NO_INDICATORS,
+  lines = NO_LINES,
   onDeleteLine,
   onAddLine,
   onClearAllLines,
@@ -155,7 +160,7 @@ export default function ChartComponent({
   enableBarSelection = true,
   onBarClick,
   selectedBarTime,
-  trades = [],
+  trades = NO_TRADES,
   markers = NO_MARKERS,
   signposts = NO_SIGNPOSTS,
   railMarkers = NO_RAIL,
@@ -164,7 +169,7 @@ export default function ChartComponent({
   height,
   focusTradeId = null,
   timeZone,
-  priceBands = [],
+  priceBands = NO_BANDS,
   sessions = false,
   showOhlcLegend = false,
   renderOhlcLegend,
@@ -374,7 +379,7 @@ export default function ChartComponent({
   useSessions({ candlestickSeriesRef, config: resolvedSessions });
 
   // Time-bounded trade overlays (segments + boxes); auto-hide off-screen.
-  useTradeOverlays({ candlestickSeriesRef, lines: boundedLines, bands: boundedBands });
+  useTradeOverlays({ candlestickSeriesRef, bars, lines: boundedLines, bands: boundedBands });
 
   // Surface the hovered bar time to the host (hover-driven overlays, etc.).
   useHoverBar({ chartRef, onHoverBar });
@@ -473,15 +478,21 @@ export default function ChartComponent({
     }
   };
 
+  // Without an explicit height every wrapper down to the chart container takes the
+  // parent's height, so the container measures what the host laid out. A parent
+  // with no definite height leaves the container at 0, and the chart falls back
+  // to 600px.
+  const fill = height === undefined;
+
   return (
-    <div className="relative space-y-4">
+    <div className={fill ? 'relative h-full' : 'relative'}>
       {isLoadingMore && (
         <div className="absolute top-4 left-1/2 transform -translate-x-1/2 bg-slate-800 text-slate-200 px-4 py-2 rounded-lg shadow-lg z-10">
           Loading more data...
         </div>
       )}
-      <div className="relative">
-        <div ref={chartContainerRef} className="w-full" />
+      <div className={fill ? 'relative h-full' : 'relative'}>
+        <div ref={chartContainerRef} className={fill ? 'w-full h-full' : 'w-full'} />
 
         {ohlcLegend && (
           <div style={{ position: 'absolute', top: 6, left: 8, zIndex: 6, pointerEvents: 'none' }}>

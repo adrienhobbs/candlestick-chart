@@ -9,4 +9,8 @@ export default defineConfig({
   treeshake: true,
   clean: true,
   external: ['react', 'react-dom', 'react/jsx-runtime', 'lightweight-charts'],
+  // fast-technical-indicators ships CommonJS under its `import` condition, so Node's
+  // ESM loader rejects the named imports in src/indicators/registry. Bundling it
+  // lets the library load under Node (host tests, SSR) as well as in bundlers.
+  noExternal: ['fast-technical-indicators'],
 });

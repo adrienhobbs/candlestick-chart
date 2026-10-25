@@ -34,6 +34,25 @@ describe('swingPoints', () => {
     expect(out[1]).toMatchObject({ high: 9, low: 0 });
   });
 
+  it('plots at the confirmation bar, at the pivot price, when asked', () => {
+    //            0        1        2        3         4        5        6
+    const hl: Array<[number, number]> = [[10, 5], [11, 6], [12, 7], [15, 9], [12, 7], [11, 8], [12, 8]];
+    const out = swingPoints(bars(hl), 2, 'confirmation');
+    // Pivot at bar 3 is known once bar 5 closes: drawn on bar 5 at bar 3's high.
+    expect(out.map((o) => o.high)).toEqual([NaN, NaN, NaN, NaN, NaN, 15, NaN]);
+    expect(out[5].time).toBe(360);
+    // The newest confirmable pivot lands on the last bar.
+    const last = swingPoints(bars([[1, 1], [9, 0], [1, 1]]), 1, 'confirmation');
+    expect(last[2]).toMatchObject({ high: 9, low: 0 });
+  });
+
+  it('reads plotAt from the settings', () => {
+    const series = bars([[1, 1], [9, 0], [1, 1], [1, 1]]);
+    expect(SwingPointsIndicator.calculate(series, { strength: 1, plotAt: 'confirmation' })[2].high).toBe(9);
+    expect(SwingPointsIndicator.calculate(series, { strength: 1, plotAt: 'confirmation' })[1].high).toBeNaN();
+    expect(SwingPointsIndicator.settings.plotAt.defaultValue).toBe('pivot');
+  });
+
   it('is a POINTS definition drawing the high and low fields', () => {
     expect(SwingPointsIndicator.renderConfig).toMatchObject({ seriesType: 'points', pointFields: ['high', 'low'] });
     expect(SwingPointsIndicator.calculate(bars([[1, 1], [9, 0], [1, 1], [1, 1]]), { strength: 1 })[1].high).toBe(9);

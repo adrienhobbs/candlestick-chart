@@ -75,6 +75,26 @@ export function snapDown(times: number[], ms: number): number | null {
 }
 
 /**
+ * Snap a time-bounded span onto ascending bar times (ms). Both ends snap down to
+ * the bar containing them; a start before the first bar clamps to it. An end that
+ * lands on the start bar extends to the next bar, since a span needs two distinct
+ * bars to be visible. Null when the span ends before the first bar.
+ */
+export function snapSpan(
+  times: number[],
+  startMs: number,
+  endMs: number,
+): { start: number; end: number } | null {
+  if (times.length === 0 || !Number.isFinite(startMs) || !Number.isFinite(endMs)) return null;
+  const end = snapDown(times, endMs);
+  if (end === null) return null;
+  const start = snapDown(times, startMs) ?? times[0];
+  if (end > start) return { start, end };
+  const next = times.find((t) => t > start);
+  return { start, end: next ?? start };
+}
+
+/**
  * Pure: host markers → lightweight-charts markers, each snapped down to a bar
  * time in ascending `barTimes` (ms) and sorted ascending. Markers before the
  * first bar, or with a non-finite time, are dropped.

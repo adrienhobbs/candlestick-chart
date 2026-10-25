@@ -213,6 +213,8 @@ export function useChartLifecycle({
           ...(heightRef.current === undefined && nextHeight > 0 ? { height: nextHeight } : {}),
           ...(heightRef.current !== undefined ? { height: heightRef.current } : {}),
         });
+        // The volume pane is sized in px; keep it a fraction of the new height.
+        sizeVolumePane();
       }
     };
 
