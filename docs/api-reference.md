@@ -1,6 +1,6 @@
 # API Reference
 
-Reference for the public API of `@adrienhobbs/candlekit` (0.8.0). Everything below is a
+Reference for the public API of `@adrienhobbs/candlekit` (0.9.0). Everything below is a
 named export of the package root unless stated otherwise.
 
 ```bash

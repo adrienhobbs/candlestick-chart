@@ -9,7 +9,7 @@ Status legend: **▶ Next** · **◷ Deferred** · **○ Backlog**
 
 ---
 
-## Unreleased
+## ✅ Shipped (0.9.0)
 
 - **`volumeMode: 'pane' | 'overlay'`.** Volume can sit along the bottom of the price pane
   instead of in its own pane, lifted above the event rail when it shows. Switching it on a live
