@@ -1,140 +1,102 @@
-# Trading Chart Component
+# candlekit
 
-A powerful, provider-agnostic trading chart built on TradingView's Lightweight Charts library.
+A React candlestick chart for reviewing trades, built on TradingView's
+[Lightweight Charts](https://tradingview.github.io/lightweight-charts/), with a pluggable
+indicator system. Published as [`@adrienhobbs/candlekit`](https://www.npmjs.com/package/@adrienhobbs/candlekit).
 
-### 🔗 [**Live demo →**](https://adrienhobbs.github.io/candlestick-chart/)
+**[Live demo](https://adrienhobbs.github.io/candlestick-chart/)**: hover a trade to see its
+entry, stop, target and MFE↔MAE box; right-click to add a line, drag it to reprice,
+double-click to edit; focus a trade from the list; add Swing Points or any other indicator.
 
-Right-click to add a price line, then **drag** it to reprice or **double-click** to edit; **hover**
-a trade's bars to preview its time-bounded entry/stop/target + a labeled MFE↔MAE box; toggle
-indicators, session shading, and the crosshair OHLC legend.
-
-## Features
-
-### Chart Visualization
-- Real-time candlestick charts with volume
-- Technical indicators (SMA, EMA, RSI, MACD, Bollinger Bands, VWAP, …)
-- **Interactive price lines** — drag to reprice (`onLineMove`), double-click to edit (`onLineChange`)
-- **Time-bounded trade overlays** — entry/stop/target segments + a labeled MFE↔MAE box that span a
-  trade's window and auto-hide when scrolled away (`startTime`/`endTime` on `ChartLine`/`PriceBand`)
-- **Hovered-bar callback** (`onHoverBar`) to drive hover-based UI
-- Trade markers (entry/exit, win/loss colored) with a details popup
-- Crosshair OHLC legend + session shading and day separators
-- Bar selection and inspection (clickable or externally controlled)
-- Infinite scroll for historical data
-- Context menu for quick actions
-- Theming for the chart canvas and modals (see [docs/theming.md](./docs/theming.md))
-
-### Data Management
-- Provider-agnostic architecture (works with any data source)
-- Built-in Alpaca Markets integration
-- Real-time WebSocket support
-- Historical data fetching with pagination
-- Data validation and normalization utilities
-- Error handling and retry logic
-- Easy to create custom adapters for other providers
-
-## Install (as a package)
+## Install
 
 ```bash
 npm install @adrienhobbs/candlekit lightweight-charts react react-dom
 ```
 
-`react`, `react-dom`, and `lightweight-charts` are peer dependencies — install them
-alongside the package.
+`lightweight-charts` (^5.1), `react` and `react-dom` (>=18) are peer dependencies.
 
 ```tsx
 import { ChartComponent } from '@adrienhobbs/candlekit';
 import '@adrienhobbs/candlekit/styles.css';
 
-<ChartComponent bars={bars} />
+<div style={{ height: 480 }}>
+  <ChartComponent bars={bars} />
+</div>
 ```
 
-Indicator overlays persist via localStorage by default
-(`createPersistenceAdapter('localStorage')`), or pass `'noop'` to disable.
+`bars` are `{ timestamp, open, high, low, close, volume }` with `timestamp` in milliseconds.
+With no `height` prop the chart fills its parent (600px if the parent has no height).
 
-## Quick Start
+The package also imports under Node, so host unit tests and SSR can load it.
 
-> The sections below describe the **dev harness** (`npm run dev`) bundled in this repo,
-> not the published package.
+## Features
 
-### Option 1: With Mock Data (No Setup Required)
+**Chart**
+- Candles and volume, infinite scroll back through history (`onLoadMoreData`), bar selection
+  (clicked or controlled with `selectedBarTime`), crosshair OHLC legend, session shading and
+  day separators, axis times in any IANA time zone, and a theme for the canvas and the dialogs.
 
-```bash
-npm install
-npm run dev
-```
+**Trades and annotations**
+- `trades`: entry/exit marks coloured by outcome, either ▲/▼ arrows or ▶/◀ at the fill
+  prices (`markerStyle: 'price'`); `muted` for context trades; `focusTradeId` scrolls a trade
+  into view once and leaves the view alone after that; `renderTradePopup`.
+- Time-bounded lines and boxes (`startTime`/`endTime` on `lines` and `priceBands`): a trade's
+  entry, stop and target segments and a labelled MFE↔MAE box that hide when scrolled away.
+- `markers` at any time and price (including ▶/◀ and hollow outlines), `signposts` (a dashed
+  line with a label pill on the top edge), and `railMarkers` (an event strip along the
+  bottom of the price pane for events without a price).
+- `onHoverBar` for hover-driven UI.
 
-The app will run with realistic mock data - perfect for testing and development.
+**Lines**
+- Price lines with a right-click menu (built-in or your own items), drag to reprice
+  (`onLineMove`), double-click to edit (`onLineChange`), delete buttons, and per-line
+  read-only flags.
 
-### Option 2: With Real Alpaca Market Data
+**Indicators**
+- 23 built-ins (moving averages, oscillators, channels, VWAP, Ichimoku, Swing Points, …),
+  an indicator browser, and settings forms generated from each indicator's settings schema.
+- Custom indicators as lines, histograms, areas or points (`ChartSeriesType.POINTS`).
+- Saved to localStorage under a key per chart, or any adapter you write.
 
-1. Install dependencies:
-```bash
-npm install
-```
+**Data**
+- `useBarsData` with adapters for any provider: `AlpacaBarAdapter` (REST + WebSocket) and
+  `MockAdapter` are included, and bar utilities cover validation, deduplication and merging.
 
-2. Get free Alpaca API credentials (see below)
-
-3. Copy `.env.example` to `.env` and add your credentials:
-```bash
-cp .env.example .env
-```
-
-Edit `.env`:
-```
-VITE_ALPACA_API_KEY=your-api-key
-VITE_ALPACA_SECRET_KEY=your-secret-key
-```
-
-4. Run the development server:
-```bash
-npm run dev
-```
-
-The app will automatically detect your API keys and switch to real market data!
-
-## Getting Alpaca API Credentials
-
-1. Sign up for a free account at [Alpaca Markets](https://alpaca.markets/)
-2. Navigate to the [Paper Trading Dashboard](https://app.alpaca.markets/paper/dashboard/overview)
-3. Go to "Your API Keys" section
-4. Generate new API keys
-5. Copy the API Key ID and Secret Key to your `.env` file
+**Also**
+- `LineChart`: several line series on one pane over an ordinal x-axis, e.g. equity curves.
 
 ## Documentation
 
-See the [docs](./docs) folder for comprehensive documentation:
+- [ChartComponent](./docs/chart-component.md): props, features, troubleshooting
+- [Indicators](./docs/indicators.md): using the built-ins, persistence, the catalog
+- [Creating Indicators](./docs/creating-indicators.md): write your own
+- [Data Management](./docs/data-management.md): `useBarsData`, adapters, bar utilities
+- [Theming](./docs/theming.md): the `theme` prop and the `--ck-*` CSS variables
+- [API Reference](./docs/api-reference.md) and [Examples](./docs/examples.md)
+- [Architecture](./docs/architecture.md): how the pieces fit
+- [Roadmap](./docs/roadmap.md): what shipped in each version and what's next
 
-- [Data Management Guide](./docs/data-management.md) - Complete guide to fetching and managing market data
-- [ChartComponent Usage](./docs/chart-component.md) - Complete guide to using the chart
-- [Theming](./docs/theming.md) - Theme the chart canvas + modals/popups
-- [Creating Indicators](./docs/creating-indicators.md) - Build custom indicators
-- [Architecture](./docs/architecture.md) - System design and architecture
-- [API Reference](./docs/api-reference.md) - Complete API documentation
-- [Examples](./docs/examples.md) - Code examples and recipes
+## Developing
 
-## Project Structure
+```bash
+npm install
+npm run dev          # the demo page, on mock data
+npm test             # vitest
+npm run typecheck
+npm run build:lib    # dist/ (tsup + CSS), then checks dist/index.js imports under Node
+npm run build:demo   # demo-dist/, deployed to GitHub Pages on push to main
+```
+
+The demo (`src/App.tsx`) imports from the package's public entry (`src/index.ts`), so it
+only uses what consumers can.
+
+To run the demo on real data, copy `.env.example` to `.env` and fill in Alpaca credentials
+(a free [paper trading](https://app.alpaca.markets/paper/dashboard/overview) account works):
 
 ```
-src/
-├── components/          # React components
-│   ├── ChartComponent.tsx
-│   ├── IndicatorBrowser.tsx
-│   └── SettingsDialog.tsx
-├── hooks/              # Custom React hooks
-│   ├── useBarsData.ts      # Data management hook
-│   ├── useChartAPI.ts      # Chart API hook
-│   └── useRealtimeUpdates.ts (deprecated)
-├── adapters/           # Data provider adapters
-│   ├── types.ts
-│   └── alpaca.ts
-├── indicators/         # Technical indicators
-│   ├── core/
-│   ├── primitives/
-│   ├── registry/
-│   └── utils/
-├── types/             # TypeScript type definitions
-└── utils/             # Utility functions
+VITE_ALPACA_API_KEY=your-api-key
+VITE_ALPACA_SECRET_KEY=your-secret-key
 ```
 
 ## License

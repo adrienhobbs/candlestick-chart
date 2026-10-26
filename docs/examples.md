@@ -1,24 +1,32 @@
 # Indicator Examples
 
-This document provides complete examples of various indicator implementations.
+Complete indicator definitions written from a consumer's point of view: each one imports
+from `@adrienhobbs/candlekit`, and is added to the chart with
+`indicatorRegistry.register(...)`. See [Creating Indicators](./creating-indicators.md)
+for the rules behind them, and [Indicators](./indicators.md) for the built-ins (several
+examples below re-create a built-in in simplified form; give yours a different `id`, or
+registering it replaces the built-in).
+
+Every `calculate` returns one point per bar, with `time` in seconds and `NaN` during
+warm-up; the renderer drops or gaps the `NaN` points.
 
 ## Example 1: Simple Moving Average (SMA)
 
-A basic indicator with period, color, and line width settings.
+A single line on the price pane.
 
 ```typescript
 import {
-  IndicatorDefinition,
-  IndicatorCategory,
+  calculateSMA,
   ChartSeriesType,
-} from '../core/types';
-import { calculateSMA } from '../utils/calculations';
+  IndicatorCategory,
+  type IndicatorDefinition,
+} from '@adrienhobbs/candlekit';
 
-export const SMAIndicator: IndicatorDefinition = {
+export const MySMAIndicator: IndicatorDefinition = {
   metadata: {
-    id: 'sma',
-    name: 'SMA',
-    description: 'Simple Moving Average - smooths price data by averaging over a period',
+    id: 'my-sma',
+    name: 'My SMA',
+    description: 'Simple Moving Average of closes',
     category: IndicatorCategory.TREND,
     version: '1.0.0',
   },
@@ -32,470 +40,365 @@ export const SMAIndicator: IndicatorDefinition = {
       max: 500,
       step: 1,
     },
-    color: {
-      type: 'color',
-      label: 'Line Color',
-      defaultValue: '#3b82f6',
-      description: 'Color of the SMA line',
-    },
-    lineWidth: {
-      type: 'number',
-      label: 'Line Width',
-      defaultValue: 2,
-      description: 'Width of the SMA line',
-      min: 1,
-      max: 5,
-      step: 1,
-    },
+    color: { type: 'color', label: 'Line Color', defaultValue: '#3b82f6' },
+    lineWidth: { type: 'number', label: 'Line Width', defaultValue: 2, min: 1, max: 5, step: 1 },
   },
   renderConfig: {
     seriesType: ChartSeriesType.LINE,
     outputCount: 1,
+    overlay: true,
   },
   calculate: (bars, settings) => {
-    const smaValues = calculateSMA(bars, settings.period);
-    return bars
-      .map((bar, i) => ({
-        time: bar.timestamp,
-        value: smaValues[i],
-      }))
-      .filter((point) => !isNaN(point.value));
+    const sma = calculateSMA(bars, Number(settings.period));
+    return bars.map((bar, i) => ({ time: bar.timestamp / 1000, value: sma[i] }));
   },
 };
 ```
 
-## Example 2: RSI with Histogram Display
+## Example 2: RSI in its own pane
 
-An oscillator indicator using histogram rendering.
+An oscillator drawn below the price chart (`overlay: false`).
 
 ```typescript
 import {
-  IndicatorDefinition,
-  IndicatorCategory,
+  calculateRSI,
   ChartSeriesType,
-} from '../core/types';
-import { calculateRSI } from '../utils/calculations';
+  IndicatorCategory,
+  type IndicatorDefinition,
+} from '@adrienhobbs/candlekit';
 
-export const RSIIndicator: IndicatorDefinition = {
+export const MyRSIIndicator: IndicatorDefinition = {
   metadata: {
-    id: 'rsi',
-    name: 'RSI',
-    description: 'Relative Strength Index - momentum oscillator',
+    id: 'my-rsi',
+    name: 'My RSI',
+    description: "Wilder's Relative Strength Index",
     category: IndicatorCategory.MOMENTUM,
     version: '1.0.0',
   },
   settings: {
-    period: {
-      type: 'number',
-      label: 'Period',
-      defaultValue: 14,
-      min: 2,
-      max: 100,
-      step: 1,
-    },
-    color: {
-      type: 'color',
-      label: 'Line Color',
-      defaultValue: '#8b5cf6',
-    },
-    lineWidth: {
-      type: 'number',
-      label: 'Line Width',
-      defaultValue: 2,
-      min: 1,
-      max: 5,
-      step: 1,
-    },
+    period: { type: 'number', label: 'Period', defaultValue: 14, min: 2, max: 100, step: 1 },
+    color: { type: 'color', label: 'Line Color', defaultValue: '#8b5cf6' },
+    lineWidth: { type: 'number', label: 'Line Width', defaultValue: 2, min: 1, max: 5, step: 1 },
   },
   renderConfig: {
     seriesType: ChartSeriesType.LINE,
     outputCount: 1,
+    overlay: false,
   },
   calculate: (bars, settings) => {
-    const rsiValues = calculateRSI(bars, settings.period);
-    return bars
-      .map((bar, i) => ({
-        time: bar.timestamp,
-        value: rsiValues[i],
-      }))
-      .filter((point) => !isNaN(point.value));
+    const rsi = calculateRSI(bars, Number(settings.period));
+    return bars.map((bar, i) => ({ time: bar.timestamp / 1000, value: rsi[i] }));
   },
 };
 ```
 
-## Example 3: Bollinger Bands (Multi-Line)
+## Example 3: Bollinger Bands (band fill)
 
-An indicator with multiple output lines.
+Three lines with a shaded fill between the outer bands. The renderer reads
+`upperColor`/`middleColor`/`lowerColor`, `showFill` and `fillColor` by name.
 
 ```typescript
 import {
-  IndicatorDefinition,
-  IndicatorCategory,
+  calculateBollingerBands,
   ChartSeriesType,
-} from '../core/types';
-import { calculateBollingerBands } from '../utils/calculations';
+  IndicatorCategory,
+  type IndicatorDefinition,
+} from '@adrienhobbs/candlekit';
 
-export const BollingerBandsIndicator: IndicatorDefinition = {
+export const MyBollingerIndicator: IndicatorDefinition = {
   metadata: {
-    id: 'bollinger',
-    name: 'Bollinger Bands',
-    description: 'Volatility bands placed above and below a moving average',
+    id: 'my-bollinger',
+    name: 'My Bollinger Bands',
+    description: 'Standard deviation bands around a moving average',
     category: IndicatorCategory.VOLATILITY,
     version: '1.0.0',
   },
   settings: {
-    period: {
-      type: 'number',
-      label: 'Period',
-      defaultValue: 20,
-      min: 2,
-      max: 200,
-      step: 1,
-    },
-    stdDev: {
-      type: 'number',
-      label: 'Standard Deviation',
-      defaultValue: 2,
-      min: 0.5,
-      max: 5,
-      step: 0.1,
-    },
-    upperColor: {
-      type: 'color',
-      label: 'Upper Band Color',
-      defaultValue: '#ef4444',
-    },
-    middleColor: {
-      type: 'color',
-      label: 'Middle Band Color',
-      defaultValue: '#3b82f6',
-    },
-    lowerColor: {
-      type: 'color',
-      label: 'Lower Band Color',
-      defaultValue: '#10b981',
-    },
-    lineWidth: {
-      type: 'number',
-      label: 'Line Width',
-      defaultValue: 2,
-      min: 1,
-      max: 5,
-      step: 1,
-    },
+    period: { type: 'number', label: 'Period', defaultValue: 20, min: 2, max: 200, step: 1 },
+    stdDev: { type: 'number', label: 'Standard Deviation', defaultValue: 2, min: 0.5, max: 5, step: 0.1 },
+    upperColor: { type: 'color', label: 'Upper Band Color', defaultValue: '#ef4444' },
+    middleColor: { type: 'color', label: 'Middle Band Color', defaultValue: '#3b82f6' },
+    lowerColor: { type: 'color', label: 'Lower Band Color', defaultValue: '#10b981' },
+    lineWidth: { type: 'number', label: 'Line Width', defaultValue: 2, min: 1, max: 5, step: 1 },
+    showFill: { type: 'boolean', label: 'Show Fill', defaultValue: true },
+    fillColor: { type: 'color', label: 'Fill Color', defaultValue: 'rgba(59, 130, 246, 0.1)' },
   },
   renderConfig: {
     seriesType: ChartSeriesType.LINE,
-    outputCount: 3,  // Three separate lines
+    outputCount: 3,
+    overlay: true,
+    hasBandFill: true,
+    fillBands: { upper: 'upper', lower: 'lower' },
   },
   calculate: (bars, settings) => {
     const { upper, middle, lower } = calculateBollingerBands(
       bars,
-      settings.period,
-      settings.stdDev
+      Number(settings.period),
+      Number(settings.stdDev),
     );
-
-    return bars
-      .map((bar, i) => ({
-        time: bar.timestamp,
-        value: middle[i],  // Middle band as main value
-        upper: upper[i],   // Upper band
-        lower: lower[i],   // Lower band
-      }))
-      .filter((point) => !isNaN(point.value));
+    return bars.map((bar, i) => ({
+      time: bar.timestamp / 1000,
+      value: middle[i],
+      upper: upper[i],
+      lower: lower[i],
+    }));
   },
 };
 ```
 
-## Example 4: MACD with Boolean Setting
+## Example 4: MACD (lines plus a histogram)
 
-An indicator using boolean and select settings.
+A generic multi-output indicator: each output field becomes its own series in one pane,
+and the field named `histogram` is drawn as a histogram. Colors come from `color` (for
+`value`) and `<field>Color` settings.
 
 ```typescript
 import {
-  IndicatorDefinition,
-  IndicatorCategory,
+  calculateEMA,
   ChartSeriesType,
-} from '../core/types';
-import { calculateEMA } from '../utils/calculations';
+  IndicatorCategory,
+  type IndicatorDefinition,
+  type OHLCVBar,
+} from '@adrienhobbs/candlekit';
 
-export const MACDIndicator: IndicatorDefinition = {
+// EMA over an arbitrary series, skipping its leading NaNs (calculateEMA works on closes).
+function emaOfSeries(values: number[], period: number): number[] {
+  const start = values.findIndex((v) => Number.isFinite(v));
+  if (start < 0) return values.map(() => NaN);
+  const asBars = values.slice(start).map((close) => ({ close }) as OHLCVBar);
+  return [...Array(start).fill(NaN), ...calculateEMA(asBars, period)];
+}
+
+export const MyMACDIndicator: IndicatorDefinition = {
   metadata: {
-    id: 'macd',
-    name: 'MACD',
+    id: 'my-macd',
+    name: 'My MACD',
     description: 'Moving Average Convergence Divergence',
     category: IndicatorCategory.MOMENTUM,
     version: '1.0.0',
   },
   settings: {
-    fastPeriod: {
-      type: 'number',
-      label: 'Fast Period',
-      defaultValue: 12,
-      min: 2,
-      max: 100,
-      step: 1,
-    },
-    slowPeriod: {
-      type: 'number',
-      label: 'Slow Period',
-      defaultValue: 26,
-      min: 2,
-      max: 100,
-      step: 1,
-    },
-    signalPeriod: {
-      type: 'number',
-      label: 'Signal Period',
-      defaultValue: 9,
-      min: 2,
-      max: 50,
-      step: 1,
-    },
-    showHistogram: {
-      type: 'boolean',
-      label: 'Show Histogram',
-      defaultValue: true,
-      description: 'Display MACD histogram',
-    },
-    macdColor: {
-      type: 'color',
-      label: 'MACD Line Color',
-      defaultValue: '#3b82f6',
-    },
-    signalColor: {
-      type: 'color',
-      label: 'Signal Line Color',
-      defaultValue: '#ef4444',
-    },
-    lineWidth: {
-      type: 'number',
-      label: 'Line Width',
-      defaultValue: 2,
-      min: 1,
-      max: 5,
-      step: 1,
-    },
+    fastPeriod: { type: 'number', label: 'Fast Period', defaultValue: 12, min: 2, max: 100, step: 1 },
+    slowPeriod: { type: 'number', label: 'Slow Period', defaultValue: 26, min: 2, max: 100, step: 1 },
+    signalPeriod: { type: 'number', label: 'Signal Period', defaultValue: 9, min: 1, max: 50, step: 1 },
+    color: { type: 'color', label: 'MACD Line Color', defaultValue: '#3b82f6' },
+    signalColor: { type: 'color', label: 'Signal Line Color', defaultValue: '#ef4444' },
+    histogramColor: { type: 'color', label: 'Histogram Color', defaultValue: '#10b981' },
+    lineWidth: { type: 'number', label: 'Line Width', defaultValue: 2, min: 1, max: 5, step: 1 },
   },
   renderConfig: {
     seriesType: ChartSeriesType.LINE,
-    outputCount: 2,
+    outputCount: 3,
+    overlay: false,
   },
   calculate: (bars, settings) => {
-    const fastEMA = calculateEMA(bars, settings.fastPeriod);
-    const slowEMA = calculateEMA(bars, settings.slowPeriod);
+    const fast = calculateEMA(bars, Number(settings.fastPeriod));
+    const slow = calculateEMA(bars, Number(settings.slowPeriod));
+    const macd = fast.map((f, i) => f - slow[i]);
+    const signal = emaOfSeries(macd, Number(settings.signalPeriod));
 
-    const macdLine = fastEMA.map((fast, i) => fast - slowEMA[i]);
-
-    const macdBars = bars.map((bar, i) => ({
-      ...bar,
-      close: macdLine[i],
+    return bars.map((bar, i) => ({
+      time: bar.timestamp / 1000,
+      value: macd[i],
+      signal: signal[i],
+      histogram: macd[i] - signal[i],
     }));
-
-    const signalLine = calculateEMA(macdBars, settings.signalPeriod);
-
-    return bars
-      .map((bar, i) => ({
-        time: bar.timestamp,
-        value: macdLine[i],
-        signal: signalLine[i],
-      }))
-      .filter((point) => !isNaN(point.value));
   },
 };
 ```
 
-## Example 5: ATR (Average True Range)
+## Example 5: ATR (custom calculation)
 
-An indicator using custom calculation logic.
+Wilder's Average True Range, computed by hand.
 
 ```typescript
-import {
-  IndicatorDefinition,
-  IndicatorCategory,
-  ChartSeriesType,
-} from '../core/types';
+import { ChartSeriesType, IndicatorCategory, type IndicatorDefinition } from '@adrienhobbs/candlekit';
 
-export const ATRIndicator: IndicatorDefinition = {
+export const MyATRIndicator: IndicatorDefinition = {
   metadata: {
-    id: 'atr',
-    name: 'ATR',
-    description: 'Average True Range - measures market volatility',
+    id: 'my-atr',
+    name: 'My ATR',
+    description: 'Average True Range: average bar range including gaps',
     category: IndicatorCategory.VOLATILITY,
     version: '1.0.0',
   },
   settings: {
-    period: {
-      type: 'number',
-      label: 'Period',
-      defaultValue: 14,
-      min: 1,
-      max: 100,
-      step: 1,
-    },
-    color: {
-      type: 'color',
-      label: 'Line Color',
-      defaultValue: '#14b8a6',
-    },
-    lineWidth: {
-      type: 'number',
-      label: 'Line Width',
-      defaultValue: 2,
-      min: 1,
-      max: 5,
-      step: 1,
-    },
+    period: { type: 'number', label: 'Period', defaultValue: 14, min: 1, max: 100, step: 1 },
+    color: { type: 'color', label: 'Line Color', defaultValue: '#14b8a6' },
+    lineWidth: { type: 'number', label: 'Line Width', defaultValue: 2, min: 1, max: 5, step: 1 },
   },
   renderConfig: {
     seriesType: ChartSeriesType.LINE,
     outputCount: 1,
+    overlay: false,
   },
   calculate: (bars, settings) => {
-    const trueRanges: number[] = [];
+    const period = Number(settings.period);
+    const atr: number[] = new Array(bars.length).fill(NaN);
 
-    for (let i = 1; i < bars.length; i++) {
-      const high = bars[i].high;
-      const low = bars[i].low;
-      const prevClose = bars[i - 1].close;
+    // trueRange[i] is defined from bar 1 on (it needs the previous close).
+    const trueRange = bars.map((bar, i) =>
+      i === 0
+        ? NaN
+        : Math.max(
+            bar.high - bar.low,
+            Math.abs(bar.high - bars[i - 1].close),
+            Math.abs(bar.low - bars[i - 1].close),
+          ),
+    );
 
-      const tr = Math.max(
-        high - low,
-        Math.abs(high - prevClose),
-        Math.abs(low - prevClose)
-      );
-
-      trueRanges.push(tr);
-    }
-
-    const atrValues: number[] = [NaN];
-
-    for (let i = 0; i < trueRanges.length; i++) {
-      if (i < settings.period - 1) {
-        atrValues.push(NaN);
-      } else if (i === settings.period - 1) {
-        let sum = 0;
-        for (let j = 0; j < settings.period; j++) {
-          sum += trueRanges[i - j];
-        }
-        atrValues.push(sum / settings.period);
-      } else {
-        const prevATR = atrValues[atrValues.length - 1];
-        const currentTR = trueRanges[i];
-        const atr = (prevATR * (settings.period - 1) + currentTR) / settings.period;
-        atrValues.push(atr);
+    if (bars.length > period) {
+      let sum = 0;
+      for (let i = 1; i <= period; i++) sum += trueRange[i];
+      atr[period] = sum / period;
+      for (let i = period + 1; i < bars.length; i++) {
+        atr[i] = (atr[i - 1] * (period - 1) + trueRange[i]) / period;
       }
     }
 
-    return bars
-      .map((bar, i) => ({
-        time: bar.timestamp,
-        value: atrValues[i],
-      }))
-      .filter((point) => !isNaN(point.value));
+    return bars.map((bar, i) => ({ time: bar.timestamp / 1000, value: atr[i] }));
   },
 };
 ```
 
-## Example 6: Volume Profile
+## Example 6: Volume histogram
 
-A histogram indicator based on volume data.
+A HISTOGRAM in its own pane. The chart already draws volume under the candles; this is
+the shape to use for any per-bar quantity, here relative volume (volume divided by its
+moving average).
 
 ```typescript
-import {
-  IndicatorDefinition,
-  IndicatorCategory,
-  ChartSeriesType,
-} from '../core/types';
+import { ChartSeriesType, IndicatorCategory, type IndicatorDefinition } from '@adrienhobbs/candlekit';
 
-export const VolumeProfileIndicator: IndicatorDefinition = {
+export const RelativeVolumeIndicator: IndicatorDefinition = {
   metadata: {
-    id: 'volume_profile',
-    name: 'Volume Profile',
-    description: 'Displays volume distribution at price levels',
+    id: 'relative-volume',
+    name: 'Relative Volume',
+    description: 'Volume divided by its average over the last N bars',
     category: IndicatorCategory.VOLUME,
     version: '1.0.0',
   },
   settings: {
-    color: {
-      type: 'color',
-      label: 'Volume Color',
-      defaultValue: '#8b5cf6',
-    },
-    opacity: {
-      type: 'number',
-      label: 'Opacity',
-      defaultValue: 70,
-      min: 0,
-      max: 100,
-      step: 5,
-      description: 'Transparency of volume bars (0-100)',
-    },
+    period: { type: 'number', label: 'Period', defaultValue: 20, min: 2, max: 200, step: 1 },
+    color: { type: 'color', label: 'Bar Color', defaultValue: '#8b5cf6' },
   },
   renderConfig: {
     seriesType: ChartSeriesType.HISTOGRAM,
     outputCount: 1,
+    overlay: false,
   },
   calculate: (bars, settings) => {
-    return bars.map((bar) => ({
-      time: bar.timestamp,
-      value: bar.volume,
-    }));
+    const period = Number(settings.period);
+    let windowSum = 0;
+    return bars.map((bar, i) => {
+      windowSum += bar.volume;
+      if (i >= period) windowSum -= bars[i - period].volume;
+      const average = windowSum / period;
+      return {
+        time: bar.timestamp / 1000,
+        value: i >= period - 1 && average > 0 ? bar.volume / average : NaN,
+      };
+    });
   },
 };
 ```
 
+## Example 7: EMA crossover points
+
+A POINTS indicator: arrows at the bars where a fast EMA crosses a slow one, with a
+separate output field (and color) for each direction.
+
+```typescript
+import {
+  calculateEMA,
+  ChartSeriesType,
+  IndicatorCategory,
+  type IndicatorDefinition,
+} from '@adrienhobbs/candlekit';
+
+export const EMACrossIndicator: IndicatorDefinition = {
+  metadata: {
+    id: 'ema-cross',
+    name: 'EMA Cross',
+    description: 'Marks bars where the fast EMA crosses the slow EMA',
+    category: IndicatorCategory.TREND,
+    version: '1.0.0',
+  },
+  settings: {
+    fastPeriod: { type: 'number', label: 'Fast Period', defaultValue: 9, min: 1, max: 200, step: 1 },
+    slowPeriod: { type: 'number', label: 'Slow Period', defaultValue: 21, min: 2, max: 400, step: 1 },
+    upColor: { type: 'color', label: 'Cross Up Color', defaultValue: '#10b981' },
+    downColor: { type: 'color', label: 'Cross Down Color', defaultValue: '#ef4444' },
+    pointSize: { type: 'number', label: 'Point Size', defaultValue: 1, min: 0.5, max: 4, step: 0.5 },
+  },
+  renderConfig: {
+    seriesType: ChartSeriesType.POINTS,
+    outputCount: 2,
+    overlay: true,
+    pointShape: 'circle',
+    pointPosition: 'atPrice',
+    pointFields: ['up', 'down'],   // colors: settings.upColor, settings.downColor
+  },
+  calculate: (bars, settings) => {
+    const fast = calculateEMA(bars, Number(settings.fastPeriod));
+    const slow = calculateEMA(bars, Number(settings.slowPeriod));
+
+    return bars.map((bar, i) => {
+      const prev = i > 0 ? fast[i - 1] - slow[i - 1] : NaN;
+      const curr = fast[i] - slow[i];
+      return {
+        time: bar.timestamp / 1000,
+        value: NaN,                                   // not drawn (not in pointFields)
+        up: prev <= 0 && curr > 0 ? bar.low : NaN,    // NaN = no point
+        down: prev >= 0 && curr < 0 ? bar.high : NaN,
+      };
+    });
+  },
+};
+```
+
+The shape is shared by both fields. To show arrows instead of circles, set
+`pointShape` (and `pointPosition: 'belowBar'` or `'aboveBar'`); for different shapes per
+direction, split it into two indicators.
+
 ## Usage Examples
 
-### Registering Multiple Indicators
+### Registering indicators
 
 ```typescript
-import { indicatorRegistry } from './indicators/core/registry';
-import { SMAIndicator } from './indicators/registry/sma';
-import { EMAIndicator } from './indicators/registry/ema';
-import { RSIIndicator } from './indicators/registry/rsi';
-import { MACDIndicator } from './indicators/registry/macd';
-import { ATRIndicator } from './indicators/registry/atr';
+import { indicatorRegistry, registerBuiltInIndicators } from '@adrienhobbs/candlekit';
+import { EMACrossIndicator, MyATRIndicator, RelativeVolumeIndicator } from './my-indicators';
 
-export function registerAllIndicators() {
-  indicatorRegistry.register(SMAIndicator);
-  indicatorRegistry.register(EMAIndicator);
-  indicatorRegistry.register(RSIIndicator);
-  indicatorRegistry.register(MACDIndicator);
-  indicatorRegistry.register(ATRIndicator);
-}
+// Once, at startup, before any chart renders.
+registerBuiltInIndicators();
+[EMACrossIndicator, MyATRIndicator, RelativeVolumeIndicator].forEach((d) => indicatorRegistry.register(d));
 ```
 
-### Creating Instances Programmatically
+To offer only some built-ins, skip `registerBuiltInIndicators()` and register the
+exported definitions you want (`SMAIndicator`, `EMAIndicator`, `RSIIndicator`, …).
+
+### Creating instances programmatically
 
 ```typescript
-import { indicatorRegistry } from './indicators';
+import { indicatorRegistry } from '@adrienhobbs/candlekit';
 
-// Create with default settings
-const sma20 = indicatorRegistry.createInstance('sma');
-
-// Create with custom settings
-const sma50 = indicatorRegistry.createInstance('sma', {
-  period: 50,
-  color: '#10b981',
-});
-
-// Create multiple instances
+const sma20 = indicatorRegistry.createInstance('sma');                     // defaults
+const sma50 = indicatorRegistry.createInstance('sma', { period: 50, color: '#10b981' });
 const ema12 = indicatorRegistry.createInstance('ema', { period: 12 });
-const ema26 = indicatorRegistry.createInstance('ema', { period: 26 });
 ```
 
-### Using in Components
+`createInstance` only builds the object; to show it, put it in the `indicators` array you
+pass to `ChartComponent`. With `useChartAPI`, `addIndicator` does both.
 
-```typescript
-import React from 'react';
-import { useChartAPI } from './hooks/useChartAPI';
+### Presets in a component
 
-function TradingSetup() {
-  const { addIndicator } = useChartAPI();
+```tsx
+import { ChartComponent, useChartAPI, type OHLCVBar } from '@adrienhobbs/candlekit';
+
+function TradingSetup({ bars }: { bars: OHLCVBar[] }) {
+  const { indicators, addIndicator } = useChartAPI();
 
   const setupTrendFollowing = () => {
-    // Add multiple indicators for trend following
     addIndicator('sma', { period: 20, color: '#3b82f6' });
     addIndicator('sma', { period: 50, color: '#10b981' });
     addIndicator('sma', { period: 200, color: '#ef4444' });
@@ -503,23 +406,17 @@ function TradingSetup() {
   };
 
   const setupMomentum = () => {
-    // Add momentum indicators
     addIndicator('rsi', { period: 14 });
-    addIndicator('macd', {
-      fastPeriod: 12,
-      slowPeriod: 26,
-      signalPeriod: 9,
-    });
+    addIndicator('macd', { fastPeriod: 12, slowPeriod: 26, signalPeriod: 9 });
   };
 
   return (
     <div>
-      <button onClick={setupTrendFollowing}>
-        Setup Trend Following
-      </button>
-      <button onClick={setupMomentum}>
-        Setup Momentum Analysis
-      </button>
+      <button onClick={setupTrendFollowing}>Trend following</button>
+      <button onClick={setupMomentum}>Momentum</button>
+      <div style={{ height: 600 }}>
+        <ChartComponent bars={bars} indicators={indicators} />
+      </div>
     </div>
   );
 }
@@ -527,75 +424,43 @@ function TradingSetup() {
 
 ## Testing Examples
 
-### Unit Test for Indicator Calculation
+### Unit test for a calculation (Vitest)
 
 ```typescript
-import { SMAIndicator } from './sma';
-import { OHLCVBar } from '../../types/chart';
+import { describe, expect, it } from 'vitest';
+import type { OHLCVBar } from '@adrienhobbs/candlekit';
+import { MySMAIndicator } from './my-sma';
 
-describe('SMA Indicator', () => {
-  const mockBars: OHLCVBar[] = [
-    { timestamp: 1000, open: 10, high: 11, low: 9, close: 10, volume: 1000 },
-    { timestamp: 2000, open: 10, high: 12, low: 10, close: 11, volume: 1100 },
-    { timestamp: 3000, open: 11, high: 12, low: 10, close: 12, volume: 1200 },
-    { timestamp: 4000, open: 12, high: 13, low: 11, close: 13, volume: 1300 },
-    { timestamp: 5000, open: 13, high: 14, low: 12, close: 14, volume: 1400 },
-  ];
+const closes = [10, 11, 12, 13, 14];
+const bars: OHLCVBar[] = closes.map((close, i) => ({
+  timestamp: Date.UTC(2025, 0, 2, 14, 30 + i * 5),
+  open: close,
+  high: close + 1,
+  low: close - 1,
+  close,
+  volume: 1000,
+}));
 
-  it('calculates SMA correctly', () => {
-    const result = SMAIndicator.calculate(mockBars, { period: 3 });
+describe('MySMAIndicator', () => {
+  it('returns one point per bar, NaN during warm-up', () => {
+    const result = MySMAIndicator.calculate(bars, { period: 3 });
 
-    expect(result).toHaveLength(3);
-    expect(result[0].value).toBeCloseTo(11, 2);  // (10+11+12)/3
-    expect(result[1].value).toBeCloseTo(12, 2);  // (11+12+13)/3
-    expect(result[2].value).toBeCloseTo(13, 2);  // (12+13+14)/3
+    expect(result).toHaveLength(5);
+    expect(result.slice(0, 2).every((p) => Number.isNaN(p.value))).toBe(true);
+    expect(result[2].value).toBeCloseTo(11); // (10 + 11 + 12) / 3
+    expect(result[4].value).toBeCloseTo(13); // (12 + 13 + 14) / 3
   });
 
-  it('filters out NaN values', () => {
-    const result = SMAIndicator.calculate(mockBars, { period: 10 });
+  it('uses seconds for time', () => {
+    const result = MySMAIndicator.calculate(bars, { period: 3 });
+    expect(result[0].time).toBe(bars[0].timestamp / 1000);
+  });
 
-    expect(result).toHaveLength(0);  // Not enough data
-    expect(result.every(r => !isNaN(r.value))).toBe(true);
+  it('is all NaN with fewer bars than the period', () => {
+    const result = MySMAIndicator.calculate(bars, { period: 10 });
+    expect(result.every((p) => Number.isNaN(p.value))).toBe(true);
   });
 });
 ```
 
-## Advanced Patterns
-
-### Composite Indicator
-
-Create an indicator that combines multiple calculations:
-
-```typescript
-export const SuperTrendIndicator: IndicatorDefinition = {
-  // ... metadata and settings
-
-  calculate: (bars, settings) => {
-    // Calculate ATR
-    const atr = calculateATR(bars, settings.atrPeriod);
-
-    // Calculate SuperTrend
-    const results = [];
-    let trend = 1;  // 1 for up, -1 for down
-
-    for (let i = 0; i < bars.length; i++) {
-      const hl2 = (bars[i].high + bars[i].low) / 2;
-      const upperBand = hl2 + settings.multiplier * atr[i];
-      const lowerBand = hl2 - settings.multiplier * atr[i];
-
-      // Trend logic...
-      const value = trend === 1 ? lowerBand : upperBand;
-
-      results.push({
-        time: bars[i].timestamp,
-        value: value,
-        trend: trend,
-      });
-    }
-
-    return results.filter(r => !isNaN(r.value));
-  },
-};
-```
-
-These examples demonstrate various patterns and techniques for creating indicators. Use them as templates for your own custom indicators.
+The package loads under Node, so tests like this run without a browser environment.

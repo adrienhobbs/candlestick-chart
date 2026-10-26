@@ -127,8 +127,8 @@ interface ChartComponentProps {
   sessions?: SessionsConfig | boolean;
   /**
    * Show the crosshair OHLC legend (O/H/L/C/V + change% + active indicator values,
-   * following the cursor; idle shows the last bar). Default false. Style it yourself
-   * with `renderOhlcLegend`.
+   * following the cursor; idle shows the selected bar, else the last bar). Default
+   * false. Style it yourself with `renderOhlcLegend`.
    */
   showOhlcLegend?: boolean;
   /** Custom renderer for the crosshair OHLC legend (overrides the built-in default). */

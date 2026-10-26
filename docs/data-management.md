@@ -1,13 +1,16 @@
 # Data Management Guide
 
-A comprehensive guide to fetching, managing, and streaming market data in your trading chart application.
+How to get bars into the chart: the `OHLCVBar` contract, the `useBarsData` hook, the
+bundled adapters (`AlpacaBarAdapter`, `MockAdapter`), the bar utilities, and how to write
+your own adapter. All imports are from `@adrienhobbs/candlekit`.
 
 ## Table of Contents
 
 - [Overview](#overview)
 - [Understanding the Architecture](#understanding-the-architecture)
 - [Quick Start with Alpaca](#quick-start-with-alpaca)
-- [Using the useBarsData Hook](#using-the-usebarshook)
+- [Using the useBarsData Hook](#using-the-usebarsdata-hook)
+- [Bundled Adapters](#bundled-adapters)
 - [Data Utilities](#data-utilities)
 - [Integration Recipes](#integration-recipes)
 - [Creating Custom Adapters](#creating-custom-adapters)
@@ -16,99 +19,121 @@ A comprehensive guide to fetching, managing, and streaming market data in your t
 
 ## Overview
 
-The trading chart uses a provider-agnostic data management system that separates data fetching from presentation. This architecture allows you to:
+`ChartComponent` does not fetch data. It renders the `bars` array you pass and calls
+`onLoadMoreData(oldestTimestamp)` when the user scrolls near the left edge. Where the
+bars come from is up to you:
 
-- Use any market data provider (Alpaca, Polygon, IEX, etc.)
-- Switch between providers without changing your component code
-- Implement custom data sources (databases, files, mock data)
-- Handle both historical and real-time data seamlessly
+- your own state and `fetch` calls,
+- the `useBarsData` hook with an adapter (`AlpacaBarAdapter`, `MockAdapter`, or your own
+  `BarDataAdapter`),
+- any store (Zustand, Redux, React Query) that produces an `OHLCVBar[]`.
 
-### Key Components
+### The bar format
 
-1. **ChartComponent** - Pure presentation component that displays bars
-2. **useBarsData Hook** - Manages data state, fetching, and updates
-3. **Adapters** - Connect to specific data providers (Alpaca, custom)
-4. **Utilities** - Helper functions for validation, normalization, etc.
+```typescript
+interface OHLCVBar {
+  timestamp: number;     // epoch milliseconds, bar open time
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+  trade_count?: number;
+  vwap?: number;
+}
+```
+
+The chart sorts bars by timestamp and drops duplicate timestamps (keeping the first)
+before drawing, but keeping your array sorted and unique avoids surprises in your own
+code and in indicator calculations, which receive the array as you passed it.
 
 ## Understanding the Architecture
 
 ### Data Flow
 
 ```
-Market Data Provider → Adapter → useBarsData → State → ChartComponent
-     (Alpaca)         (API/WS)    (Hook)      (bars)    (Display)
+Market data provider → Adapter → useBarsData → bars → ChartComponent
+     (Alpaca)          (REST/WS)    (hook)     (state)   (display)
 ```
 
 ### Component Responsibilities
 
-**ChartComponent** (Presentation)
-- Receives `bars` array as prop
-- Renders candlesticks and volume
-- Triggers `onLoadMoreData` for infinite scroll
-- No data fetching logic
+**ChartComponent** (presentation)
+- Receives `bars` as a prop and renders candles and volume
+- Applies a single-bar `update` when only the last bar changed, a full `setData` otherwise
+- Calls `onLoadMoreData` for infinite scroll
+- No fetching
 
-**useBarsData** (State Management)
-- Manages bars state
-- Coordinates with adapter
-- Provides loading/error states
-- Handles subscriptions
+**useBarsData** (state)
+- Holds the bars array, `loading`, `error` and `connected`
+- Validates, normalizes and sorts fetched bars
+- Calls the adapter for history and real-time updates
 
-**Adapter** (Data Source)
-- Fetches historical data
-- Subscribes to real-time updates
-- Normalizes provider-specific formats
-- Handles authentication
+**Adapter** (data source)
+- `fetchHistoricalBars` returns bars for a symbol and timeframe
+- Optional `subscribeRealtime` streams completed bars and trades
+- Converts the provider's format to `OHLCVBar`
 
 ## Quick Start with Alpaca
 
-### 1. Get API Credentials
+### 1. Get API credentials
 
-1. Sign up at [Alpaca Markets](https://alpaca.markets/)
-2. Navigate to your [Paper Trading Dashboard](https://app.alpaca.markets/paper/dashboard/overview)
-3. Go to "Your API Keys"
-4. Generate new API keys
-5. Copy the API Key ID and Secret Key
+Create an account at [Alpaca](https://alpaca.markets/) and generate an API key ID and
+secret key (paper trading keys work for market data).
 
-### 2. Configure Environment
+### 2. Configure the environment
 
-Add to your `.env` file:
+For a Vite app:
 
 ```bash
 VITE_ALPACA_API_KEY=your-api-key-id
 VITE_ALPACA_SECRET_KEY=your-secret-key
-VITE_ALPACA_BASE_URL=https://data.alpaca.markets
-VITE_ALPACA_WS_URL=wss://stream.data.alpaca.markets/v2/iex
 ```
 
-### 3. Use in Your App
+`AlpacaBarAdapter` runs in the browser and sends both keys with every request, so anyone
+using the page can read them. That is fine for local tools and demos; for a public site,
+put the provider behind your own backend and write a small adapter for it (see
+[Creating Custom Adapters](#creating-custom-adapters)).
 
-```typescript
-import { useBarsData } from './hooks/useBarsData';
-import { AlpacaBarAdapter } from './adapters/alpaca';
-import ChartComponent from './components/ChartComponent';
+### 3. Use it
+
+```tsx
+import { useMemo } from 'react';
+import { AlpacaBarAdapter, ChartComponent, useBarsData } from '@adrienhobbs/candlekit';
+import '@adrienhobbs/candlekit/styles.css';
 
 function MyChart() {
-  const adapter = new AlpacaBarAdapter({
-    apiKey: import.meta.env.VITE_ALPACA_API_KEY,
-    secretKey: import.meta.env.VITE_ALPACA_SECRET_KEY,
-  });
+  // Create the adapter once; a new instance on every render would re-run the
+  // subscription effect each time.
+  const adapter = useMemo(
+    () =>
+      new AlpacaBarAdapter({
+        apiKey: import.meta.env.VITE_ALPACA_API_KEY,
+        secretKey: import.meta.env.VITE_ALPACA_SECRET_KEY,
+      }),
+    [],
+  );
 
-  const { bars, loading, error, connected } = useBarsData({
+  const { bars, loading, error } = useBarsData({
     adapter,
     symbol: 'AAPL',
     timeframe: '5Min',
     autoFetch: true,
-    autoSubscribe: false,
   });
 
-  if (loading) return <div>Loading...</div>;
+  if (loading && bars.length === 0) return <div>Loading...</div>;
   if (error) return <div>Error: {error.message}</div>;
 
-  return <ChartComponent bars={bars} />;
+  return (
+    <div style={{ height: 600 }}>
+      <ChartComponent bars={bars} />
+    </div>
+  );
 }
 ```
 
-That's it! You now have real market data.
+Without a `height` prop the chart fills its container's height, so the container needs
+one.
 
 ## Using the useBarsData Hook
 
@@ -116,78 +141,110 @@ That's it! You now have real market data.
 
 ```typescript
 const {
-  bars,              // OHLCVBar[] - Current bars array
-  loading,           // boolean - Loading state
-  error,             // Error | null - Error state
-  connected,         // boolean - WebSocket connection status
+  bars,              // OHLCVBar[]
+  loading,           // boolean: a fetchHistorical call is in flight
+  error,             // Error | null: last fetch or stream error
+  connected,         // boolean: real-time stream connected
 
-  setBars,           // (bars: OHLCVBar[]) => void
-  appendBar,         // (bar: OHLCVBar) => void
-  updateLastBar,     // (bar: OHLCVBar) => void
-  updateCurrentBar,  // (price: number, volume: number) => void
-  prependBars,       // (bars: OHLCVBar[]) => void
+  setBars,           // (bars: OHLCVBar[]) => void   validates, normalizes, sorts, replaces
+  appendBar,         // (bar: OHLCVBar) => void      appends; ignored if the timestamp exists
+  updateLastBar,     // (bar: OHLCVBar) => void      replaces the last bar
+  updateCurrentBar,  // (price: number, volume: number) => void   folds a trade into the last bar
+  prependBars,       // (bars: OHLCVBar[]) => void   validates, adds older bars in front
   clearBars,         // () => void
 
   fetchHistorical,   // (params?: Partial<HistoricalDataParams>) => Promise<void>
   subscribe,         // () => void
   unsubscribe,       // () => void
-  refetch,           // () => Promise<void>
+  refetch,           // () => Promise<void>   fetchHistorical() with the hook's options
 } = useBarsData(options);
 ```
+
+`UseBarsDataOptions` and `UseBarsDataReturn` are the type names in the source; they are
+not re-exported from the package root, so type the result with
+`ReturnType<typeof useBarsData>` if you need it.
 
 ### Options
 
 ```typescript
 interface UseBarsDataOptions {
   adapter?: BarDataAdapter;
-  symbol?: string;           // Default: 'AAPL'
-  timeframe?: string;        // Default: '5Min'
-  autoFetch?: boolean;       // Default: false
-  autoSubscribe?: boolean;   // Default: false
-  limit?: number;            // Default: 500
+  symbol?: string;           // default 'AAPL'
+  timeframe?: string;        // default '5Min' (passed through to the adapter)
+  autoFetch?: boolean;       // default false: fetch once when an adapter is present
+  autoSubscribe?: boolean;   // default false: subscribe while an adapter supports it
+  limit?: number;            // default 500
+  debug?: boolean;           // default false: log fetch/subscribe traces
 }
 ```
 
+Behavior to know about:
+
+- **`autoFetch` fetches once per mount.** Changing `symbol` or `timeframe` afterwards does
+  not refetch on its own; call `refetch()` (or `fetchHistorical()`) in an effect, or
+  remount the component with a `key`.
+- **`fetchHistorical` with `before`** prepends the result to the existing bars. Without
+  `before` it replaces them. A call made while another is in flight is skipped.
+- **Missing adapter.** `fetchHistorical` sets `error` to `No adapter provided`.
+- **Real-time handlers.** `onBar` calls `appendBar` and `onTrade` calls
+  `updateCurrentBar`. `appendBar` ignores a bar whose timestamp is already present, so an
+  adapter must send the forming bar's changes as trades (or you call `updateLastBar`
+  yourself), not as repeated `onBar` calls.
+- **Subscription lifetime.** With `autoSubscribe`, the hook subscribes when the adapter or
+  symbol changes and unsubscribes on cleanup and unmount. Keep the adapter identity stable
+  (`useMemo` or module scope).
+
 ### Examples
 
-#### Basic Usage
+#### Basic usage
 
 ```typescript
 const { bars, loading } = useBarsData({
-  adapter: myAdapter,
+  adapter,
   symbol: 'TSLA',
   timeframe: '1Min',
   autoFetch: true,
 });
 ```
 
-#### Manual Control
+#### Refetch when the symbol changes
 
 ```typescript
-const { bars, fetchHistorical, subscribe, unsubscribe } = useBarsData({
-  adapter: myAdapter,
-  symbol: 'SPY',
-  autoFetch: false,
-  autoSubscribe: false,
-});
+const { bars, refetch } = useBarsData({ adapter, symbol, timeframe });
 
-// Fetch when needed
 useEffect(() => {
-  fetchHistorical();
-}, [fetchHistorical]);
-
-// Subscribe to live updates
-const handleConnect = () => subscribe();
-const handleDisconnect = () => unsubscribe();
+  refetch();
+}, [symbol, timeframe, refetch]);
 ```
 
-#### With Error Handling
+`refetch` changes identity when `symbol`, `timeframe`, `limit` or `adapter` change, so
+this effect runs once on mount and once per change.
+
+#### Manual live control
 
 ```typescript
-const { bars, error, loading, refetch } = useBarsData({
-  adapter: myAdapter,
-  autoFetch: true,
-});
+const { connected, subscribe, unsubscribe } = useBarsData({ adapter, symbol: 'SPY', autoFetch: true });
+
+<button onClick={() => (connected ? unsubscribe() : subscribe())}>
+  {connected ? 'Stop live' : 'Go live'}
+</button>
+```
+
+#### Infinite scroll
+
+```tsx
+const { bars, fetchHistorical } = useBarsData({ adapter, symbol: 'AAPL', autoFetch: true });
+
+<ChartComponent
+  bars={bars}
+  onLoadMoreData={(oldest) => fetchHistorical({ before: oldest, limit: 200 })}
+/>
+```
+
+#### Error handling
+
+```tsx
+const { bars, error, refetch } = useBarsData({ adapter, autoFetch: true });
 
 if (error) {
   return (
@@ -199,268 +256,238 @@ if (error) {
 }
 ```
 
+## Bundled Adapters
+
+### AlpacaBarAdapter
+
+```typescript
+new AlpacaBarAdapter({
+  apiKey: string,       // required
+  secretKey: string,    // required (the constructor throws without both)
+  baseUrl?: string,     // default 'https://data.alpaca.markets'
+  wsUrl?: string,       // default 'wss://stream.data.alpaca.markets/v2/iex'
+});
+```
+
+- `fetchHistoricalBars` calls `GET {baseUrl}/v2/stocks/{symbol}/bars` with `timeframe`,
+  `limit` (default 500) and `feed=iex`; `before` is sent as `end` and `after` as `start`
+  (ISO strings). It reads one page and ignores `next_page_token`. `timeframe` uses
+  Alpaca's format (`1Min`, `5Min`, `15Min`, `1Hour`, `1Day`).
+- `subscribeRealtime(symbol, handlers)` opens the WebSocket, authenticates, and subscribes
+  to the symbol's trades (`onTrade`) and minute bars (`onBar`). On close it reconnects up
+  to 5 times with exponential backoff starting at 1 s, then reports
+  `Max reconnection attempts reached` through `onError`.
+- One adapter instance follows one symbol at a time; `unsubscribe()` or `unsubscribeAll()`
+  closes the socket.
+- The adapter logs connection events to the console.
+
+### MockAdapter
+
+```typescript
+const adapter = new MockAdapter();
+```
+
+No options. For demos and tests without network access:
+
+- `fetchHistoricalBars` waits 800 ms, then returns `limit` (default 100) random-walk
+  5-minute bars ending at `before` (or now). `symbol` and `timeframe` are ignored.
+- `subscribeRealtime` calls `onConnect`, then every 5 s calls `onBar` with a random bar
+  stamped at the current 5-minute boundary. Through `useBarsData`, only the first bar of
+  each 5-minute bucket is appended (see the `appendBar` rule above), and its prices start
+  near 100 rather than continuing from the history.
+
 ## Data Utilities
 
-Import from `src/utils/barUtils.ts`:
+All exported from the package root (source: `src/utils/barUtils.ts`). They return new
+arrays and never mutate their input.
 
 ### Validation
 
 ```typescript
-import { validateBar, isValidBar } from './utils/barUtils';
+import { validateBar, isValidBar } from '@adrienhobbs/candlekit';
 
-// Validate a single bar
-const isValid = validateBar(bar);
-
-// Type guard
-if (isValidBar(bar)) {
-  // TypeScript knows bar is OHLCVBar here
-}
+validateBar(bar); // type guard: bar is OHLCVBar
+isValidBar(bar);  // same check, alias
 ```
+
+A bar is valid when `timestamp`, `open`, `high`, `low`, `close` and `volume` are numbers,
+`timestamp > 0`, all prices are `> 0`, `volume >= 0`, and `high`/`low` bound `open` and
+`close`.
 
 ### Normalization
 
 ```typescript
-import { normalizeTimestamp, validateAndNormalizeBars } from './utils/barUtils';
+import { normalizeTimestamp, validateAndNormalizeBars } from '@adrienhobbs/candlekit';
 
-// Convert seconds to milliseconds
-const ms = normalizeTimestamp(timestamp);
-
-// Validate and normalize array
-const validBars = validateAndNormalizeBars(rawData);
+normalizeTimestamp(1700000000);        // 1700000000000: values below 1e10 are treated as seconds
+validateAndNormalizeBars(rawBars);     // drops invalid bars (with a console warning), normalizes timestamps
 ```
 
-### Deduplication
+`validateAndNormalizeBars` does not sort or dedupe. It also logs the received and returned
+counts to the console on every call.
+
+### Deduplication and merging
 
 ```typescript
-import { deduplicateBars, mergeBars } from './utils/barUtils';
+import { deduplicateBars, mergeBars } from '@adrienhobbs/candlekit';
 
-// Remove duplicates
-const unique = deduplicateBars(bars);
-
-// Merge two arrays, removing duplicates
-const combined = mergeBars(existingBars, newBars);
+deduplicateBars(bars);                 // unique by timestamp (first wins), sorted
+mergeBars(existingBars, newBars);      // concatenate, then deduplicateBars (existing wins)
 ```
 
-### Sorting
+### Sorting and lookup
 
 ```typescript
-import { sortBars } from './utils/barUtils';
+import { sortBars, getOldestBar, getNewestBar } from '@adrienhobbs/candlekit';
 
-// Ensure chronological order
-const sorted = sortBars(bars);
+sortBars(bars);       // ascending by timestamp
+getOldestBar(bars);   // bars[0] or null (assumes sorted)
+getNewestBar(bars);   // last bar or null
 ```
 
-### Bar Updates
+### Bar updates
 
 ```typescript
-import { updateCurrentBar, appendBar, prependBars } from './utils/barUtils';
+import { appendBar, prependBars, updateBarInArray, updateCurrentBar } from '@adrienhobbs/candlekit';
 
-// Update last bar with trade data
-const updated = updateCurrentBar(bars, tradePrice, tradeVolume);
-
-// Add bar to end
-const withNew = appendBar(bars, newBar);
-
-// Add bars to beginning
-const withOld = prependBars(bars, olderBars);
+appendBar(bars, newBar);                       // unchanged if the timestamp exists
+prependBars(bars, olderBars);                  // older bars in front, skipping existing timestamps (not re-sorted)
+updateBarInArray(bars, bar);                   // replace by timestamp, or insert and sort
+updateCurrentBar(bars, tradePrice, tradeSize); // last bar: close = price, extend high/low, add volume
 ```
 
 ## Integration Recipes
 
-### Recipe 1: REST API Only
+### Recipe 1: REST only
 
-Perfect for historical analysis when you don't need real-time updates.
-
-```typescript
-import { useState, useEffect } from 'react';
-import ChartComponent from './components/ChartComponent';
-import { OHLCVBar } from './types/chart';
+```tsx
+import { useEffect, useState } from 'react';
+import { ChartComponent, prependBars, validateAndNormalizeBars, sortBars, type OHLCVBar } from '@adrienhobbs/candlekit';
 
 function HistoricalChart() {
   const [bars, setBars] = useState<OHLCVBar[]>([]);
-  const [loading, setLoading] = useState(false);
-
-  const fetchBars = async () => {
-    setLoading(true);
-    try {
-      const response = await fetch('/api/bars?symbol=AAPL&limit=500');
-      const data = await response.json();
-      setBars(data);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   useEffect(() => {
-    fetchBars();
+    fetch('/api/bars?symbol=AAPL&limit=500')
+      .then((res) => res.json())
+      .then((data) => setBars(sortBars(validateAndNormalizeBars(data))));
   }, []);
 
   const loadMoreBars = async (oldestTimestamp: number) => {
-    const response = await fetch(
-      `/api/bars?symbol=AAPL&before=${oldestTimestamp}&limit=100`
-    );
-    const olderBars = await response.json();
-    setBars(prev => [...olderBars, ...prev]);
+    const res = await fetch(`/api/bars?symbol=AAPL&before=${oldestTimestamp}&limit=100`);
+    const older = sortBars(validateAndNormalizeBars(await res.json()));
+    setBars((prev) => prependBars(prev, older));
   };
 
-  if (loading) return <div>Loading...</div>;
-
   return (
-    <ChartComponent
-      bars={bars}
-      onLoadMoreData={loadMoreBars}
-    />
+    <div style={{ height: 600 }}>
+      <ChartComponent bars={bars} onLoadMoreData={loadMoreBars} />
+    </div>
   );
 }
 ```
 
-### Recipe 2: WebSocket Only
+`onLoadMoreData` fires again only after `bars` grows, so if the server has no older bars,
+the chart stops asking.
 
-For live trading data with no historical context.
+### Recipe 2: REST plus a WebSocket of trades
 
-```typescript
-import { useState, useEffect } from 'react';
-import ChartComponent from './components/ChartComponent';
-import { OHLCVBar } from './types/chart';
-
-function LiveChart() {
-  const [bars, setBars] = useState<OHLCVBar[]>([]);
-
-  useEffect(() => {
-    const ws = new WebSocket('wss://api.example.com/bars');
-
-    ws.onmessage = (event) => {
-      const bar: OHLCVBar = JSON.parse(event.data);
-      setBars(prev => [...prev, bar]);
-    };
-
-    ws.onerror = (error) => {
-      console.error('WebSocket error:', error);
-    };
-
-    return () => ws.close();
-  }, []);
-
-  return <ChartComponent bars={bars} />;
-}
-```
-
-### Recipe 3: REST + WebSocket (Hybrid)
-
-Load historical data, then stream real-time updates. Best for production.
-
-```typescript
-import { useState, useEffect } from 'react';
-import ChartComponent from './components/ChartComponent';
-import { OHLCVBar } from './types/chart';
-import { updateCurrentBar } from './utils/barUtils';
+```tsx
+import { useEffect, useState } from 'react';
+import { ChartComponent, updateCurrentBar, type OHLCVBar } from '@adrienhobbs/candlekit';
 
 function HybridChart() {
   const [bars, setBars] = useState<OHLCVBar[]>([]);
-  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const init = async () => {
-      // Fetch historical data
-      const response = await fetch('/api/bars?limit=500');
-      const data = await response.json();
-      setBars(data);
-      setLoading(false);
+    let cancelled = false;
+    let ws: WebSocket | null = null;
 
-      // Connect to WebSocket for live updates
-      const ws = new WebSocket('wss://api.example.com/trades');
+    fetch('/api/bars?limit=500')
+      .then((res) => res.json())
+      .then((data: OHLCVBar[]) => {
+        if (cancelled) return;
+        setBars(data);
+        ws = new WebSocket('wss://api.example.com/trades');
+        ws.onmessage = (event) => {
+          const trade = JSON.parse(event.data) as { price: number; size: number };
+          setBars((prev) => updateCurrentBar(prev, trade.price, trade.size));
+        };
+      });
 
-      ws.onmessage = (event) => {
-        const trade = JSON.parse(event.data);
-        setBars(prev => updateCurrentBar(prev, trade.price, trade.size));
-      };
-
-      return () => ws.close();
-    };
-
-    const cleanup = init();
     return () => {
-      cleanup.then(fn => fn?.());
+      cancelled = true;
+      ws?.close();
     };
   }, []);
 
-  if (loading) return <div>Loading...</div>;
-
-  return <ChartComponent bars={bars} />;
+  return (
+    <div style={{ height: 600 }}>
+      <ChartComponent bars={bars} />
+    </div>
+  );
 }
 ```
 
-### Recipe 4: Polling Strategy
+This only grows the last bar. To start a new bar when a trade crosses a bar boundary,
+compare the trade time with the last bar's timestamp and `appendBar` a fresh bar.
 
-When WebSocket isn't available, poll the API periodically.
+### Recipe 3: Polling
 
-```typescript
-import { useState, useEffect } from 'react';
-import ChartComponent from './components/ChartComponent';
-import { OHLCVBar } from './types/chart';
+```tsx
+import { useEffect, useState } from 'react';
+import { ChartComponent, mergeBars, type OHLCVBar } from '@adrienhobbs/candlekit';
 
 function PollingChart() {
   const [bars, setBars] = useState<OHLCVBar[]>([]);
 
   useEffect(() => {
     const fetchLatest = async () => {
-      const response = await fetch('/api/bars/latest');
-      const newBars = await response.json();
-      setBars(prev => [...prev, ...newBars]);
+      const res = await fetch('/api/bars/latest');
+      const latest: OHLCVBar[] = await res.json();
+      // mergeBars keeps the existing bar on a timestamp clash; use updateBarInArray
+      // per bar instead if the latest poll should overwrite the forming bar.
+      setBars((prev) => mergeBars(prev, latest));
     };
-
-    // Initial fetch
     fetchLatest();
-
-    // Poll every 5 seconds
     const interval = setInterval(fetchLatest, 5000);
-
     return () => clearInterval(interval);
   }, []);
 
-  return <ChartComponent bars={bars} />;
+  return (
+    <div style={{ height: 600 }}>
+      <ChartComponent bars={bars} />
+    </div>
+  );
 }
 ```
 
-### Recipe 5: Zustand State Management
+### Recipe 4: A global store (Zustand)
 
-Using Zustand for global chart state management, perfect for apps where multiple components need access to chart data.
+If several components need the bars, keep them in a store and pass the array to the
+chart. The bar utilities do the array work:
 
 ```typescript
 // stores/chartStore.ts
 import { create } from 'zustand';
-import { OHLCVBar } from '../types/chart';
-import { BarDataAdapter, HistoricalDataParams, RealtimeSubscription } from '../adapters/types';
 import {
-  validateAndNormalizeBars,
+  appendBar,
+  prependBars,
   sortBars,
-  prependBars as prependBarsUtil,
-  updateCurrentBar as updateCurrentBarUtil,
-  appendBar as appendBarUtil,
-} from '../utils/barUtils';
+  updateCurrentBar,
+  validateAndNormalizeBars,
+  type BarDataAdapter,
+  type OHLCVBar,
+  type RealtimeSubscription,
+} from '@adrienhobbs/candlekit';
 
 interface ChartState {
   bars: OHLCVBar[];
   loading: boolean;
   error: Error | null;
-  connected: boolean;
-  adapter: BarDataAdapter | null;
-  symbol: string;
-  timeframe: string;
   subscription: RealtimeSubscription | null;
-
-  setAdapter: (adapter: BarDataAdapter) => void;
-  setSymbol: (symbol: string) => void;
-  setTimeframe: (timeframe: string) => void;
-
-  setBars: (bars: OHLCVBar[]) => void;
-  appendBar: (bar: OHLCVBar) => void;
-  prependBars: (bars: OHLCVBar[]) => void;
-  updateCurrentBar: (price: number, volume: number) => void;
-  clearBars: () => void;
-
-  fetchHistorical: (params?: Partial<HistoricalDataParams>) => Promise<void>;
-  subscribe: () => void;
+  load: (adapter: BarDataAdapter, symbol: string, timeframe: string, before?: number) => Promise<void>;
+  subscribe: (adapter: BarDataAdapter, symbol: string) => void;
   unsubscribe: () => void;
 }
 
@@ -468,250 +495,90 @@ export const useChartStore = create<ChartState>((set, get) => ({
   bars: [],
   loading: false,
   error: null,
-  connected: false,
-  adapter: null,
-  symbol: 'AAPL',
-  timeframe: '5Min',
   subscription: null,
 
-  setAdapter: (adapter) => set({ adapter }),
-  setSymbol: (symbol) => set({ symbol }),
-  setTimeframe: (timeframe) => set({ timeframe }),
-
-  setBars: (newBars) => {
-    const validated = validateAndNormalizeBars(newBars);
-    const sorted = sortBars(validated);
-    set({ bars: sorted });
-  },
-
-  appendBar: (bar) => {
-    const current = get().bars;
-    set({ bars: appendBarUtil(current, bar) });
-  },
-
-  prependBars: (newBars) => {
-    const validated = validateAndNormalizeBars(newBars);
-    const current = get().bars;
-    set({ bars: prependBarsUtil(current, validated) });
-  },
-
-  updateCurrentBar: (price, volume) => {
-    const current = get().bars;
-    set({ bars: updateCurrentBarUtil(current, price, volume) });
-  },
-
-  clearBars: () => set({ bars: [] }),
-
-  fetchHistorical: async (params = {}) => {
-    const { adapter, symbol, timeframe, bars } = get();
-
-    if (!adapter) {
-      set({ error: new Error('No adapter configured') });
-      return;
-    }
-
+  load: async (adapter, symbol, timeframe, before) => {
     set({ loading: true, error: null });
-
     try {
-      const fetchParams: HistoricalDataParams = {
-        symbol: params.symbol || symbol,
-        timeframe: params.timeframe || timeframe,
-        limit: params.limit || 500,
-        before: params.before,
-        after: params.after,
-      };
-
-      const data = await adapter.fetchHistoricalBars(fetchParams);
-      const validated = validateAndNormalizeBars(data);
-
-      if (params.before) {
-        set({ bars: prependBarsUtil(bars, validated) });
-      } else {
-        const sorted = sortBars(validated);
-        set({ bars: sorted });
-      }
+      const data = sortBars(
+        validateAndNormalizeBars(await adapter.fetchHistoricalBars({ symbol, timeframe, before, limit: 500 })),
+      );
+      set({ bars: before ? prependBars(get().bars, data) : data });
     } catch (err) {
-      const error = err instanceof Error ? err : new Error('Failed to fetch data');
-      set({ error });
+      set({ error: err instanceof Error ? err : new Error('Failed to fetch bars') });
     } finally {
       set({ loading: false });
     }
   },
 
-  subscribe: () => {
-    const { adapter, symbol, subscription } = get();
-
-    if (!adapter?.subscribeRealtime) {
-      console.warn('Adapter does not support real-time subscriptions');
-      return;
-    }
-
-    if (subscription) {
-      console.warn('Already subscribed');
-      return;
-    }
-
-    const sub = adapter.subscribeRealtime(symbol, {
-      onBar: (bar) => get().appendBar(bar),
-      onTrade: (price, volume) => get().updateCurrentBar(price, volume),
-      onError: (err) => set({ error: err, connected: false }),
-      onConnect: () => set({ connected: true }),
-      onDisconnect: () => set({ connected: false }),
+  subscribe: (adapter, symbol) => {
+    if (!adapter.subscribeRealtime || get().subscription) return;
+    const subscription = adapter.subscribeRealtime(symbol, {
+      onBar: (bar) => set({ bars: appendBar(get().bars, bar) }),
+      onTrade: (price, volume) => set({ bars: updateCurrentBar(get().bars, price, volume) }),
+      onError: (error) => set({ error }),
     });
-
-    set({ subscription: sub });
+    set({ subscription });
   },
 
   unsubscribe: () => {
-    const { subscription } = get();
-    if (subscription) {
-      subscription.unsubscribe();
-      set({ subscription: null, connected: false });
-    }
+    get().subscription?.unsubscribe();
+    set({ subscription: null });
   },
 }));
 ```
 
-```typescript
-// App.tsx or Chart component
+```tsx
 import { useEffect } from 'react';
+import { ChartComponent, MockAdapter } from '@adrienhobbs/candlekit';
 import { useChartStore } from './stores/chartStore';
-import { AlpacaBarAdapter } from './adapters/alpaca';
-import ChartComponent from './components/ChartComponent';
+
+const adapter = new MockAdapter();
 
 function TradingChart() {
-  const {
-    bars,
-    loading,
-    error,
-    connected,
-    setAdapter,
-    fetchHistorical,
-    subscribe,
-    unsubscribe,
-  } = useChartStore();
+  const bars = useChartStore((s) => s.bars);
+  const load = useChartStore((s) => s.load);
 
   useEffect(() => {
-    const adapter = new AlpacaBarAdapter({
-      apiKey: import.meta.env.VITE_ALPACA_API_KEY,
-      secretKey: import.meta.env.VITE_ALPACA_SECRET_KEY,
-    });
-
-    setAdapter(adapter);
-    fetchHistorical();
-  }, [setAdapter, fetchHistorical]);
-
-  const handleLoadMore = async (oldestTimestamp: number) => {
-    await fetchHistorical({ before: oldestTimestamp, limit: 100 });
-  };
-
-  if (loading && bars.length === 0) return <div>Loading...</div>;
-  if (error) return <div>Error: {error.message}</div>;
+    load(adapter, 'AAPL', '5Min');
+  }, [load]);
 
   return (
-    <div>
-      <div className="controls">
-        <button onClick={() => fetchHistorical()}>Refresh</button>
-        <button onClick={() => connected ? unsubscribe() : subscribe()}>
-          {connected ? 'Disconnect' : 'Connect'} Live
-        </button>
-        <span>{connected ? '🟢 Connected' : '⚫ Disconnected'}</span>
-      </div>
-      <ChartComponent bars={bars} onLoadMoreData={handleLoadMore} />
+    <div style={{ height: 600 }}>
+      <ChartComponent bars={bars} onLoadMoreData={(oldest) => load(adapter, 'AAPL', '5Min', oldest)} />
     </div>
   );
+}
+
+// Elsewhere: read one value without re-rendering on unrelated changes.
+function LastPrice() {
+  const last = useChartStore((s) => s.bars[s.bars.length - 1]);
+  return last ? <span>{last.close.toFixed(2)}</span> : null;
 }
 ```
 
-**Benefits of Zustand Integration:**
+### Recipe 5: Full Alpaca integration with useBarsData
 
-- **Global State**: Multiple components can access chart data
-- **No Prop Drilling**: Access bars anywhere with `useChartStore()`
-- **Persistence**: Easy to add middleware for localStorage persistence
-- **DevTools**: Built-in devtools support for debugging
-- **Selectors**: Efficiently subscribe to specific slices of state
-
-**Example: Using selectors in other components**
-
-```typescript
-// Sidebar.tsx - Shows current price without re-rendering on every bar
-function Sidebar() {
-  const lastBar = useChartStore((state) =>
-    state.bars[state.bars.length - 1]
-  );
-
-  if (!lastBar) return null;
-
-  return (
-    <div>
-      <h3>Current Price</h3>
-      <p>${lastBar.close.toFixed(2)}</p>
-    </div>
-  );
-}
-
-// Statistics.tsx - Compute stats without storing in state
-function Statistics() {
-  const stats = useChartStore((state) => {
-    const bars = state.bars;
-    if (bars.length === 0) return null;
-
-    const high = Math.max(...bars.map(b => b.high));
-    const low = Math.min(...bars.map(b => b.low));
-    const volume = bars.reduce((sum, b) => sum + b.volume, 0);
-
-    return { high, low, volume };
-  });
-
-  if (!stats) return null;
-
-  return (
-    <div>
-      <p>High: ${stats.high.toFixed(2)}</p>
-      <p>Low: ${stats.low.toFixed(2)}</p>
-      <p>Volume: {stats.volume.toLocaleString()}</p>
-    </div>
-  );
-}
-```
-
-### Recipe 6: Complete Alpaca Integration
-
-Full-featured implementation with all controls using the built-in hook.
-
-```typescript
-import { useBarsData } from './hooks/useBarsData';
-import { AlpacaBarAdapter } from './adapters/alpaca';
-import ChartComponent from './components/ChartComponent';
+```tsx
+import { useMemo } from 'react';
+import { AlpacaBarAdapter, ChartComponent, useBarsData } from '@adrienhobbs/candlekit';
 
 function AlpacaChart() {
-  const adapter = new AlpacaBarAdapter({
-    apiKey: import.meta.env.VITE_ALPACA_API_KEY,
-    secretKey: import.meta.env.VITE_ALPACA_SECRET_KEY,
-  });
+  const adapter = useMemo(
+    () =>
+      new AlpacaBarAdapter({
+        apiKey: import.meta.env.VITE_ALPACA_API_KEY,
+        secretKey: import.meta.env.VITE_ALPACA_SECRET_KEY,
+      }),
+    [],
+  );
 
-  const {
-    bars,
-    loading,
-    error,
-    connected,
-    fetchHistorical,
-    subscribe,
-    unsubscribe,
-  } = useBarsData({
+  const { bars, loading, error, connected, fetchHistorical, refetch, subscribe, unsubscribe } = useBarsData({
     adapter,
     symbol: 'AAPL',
     timeframe: '5Min',
     autoFetch: true,
-    autoSubscribe: false,
   });
-
-  const handleLoadMore = async (oldestTimestamp: number) => {
-    await fetchHistorical({
-      before: oldestTimestamp,
-      limit: 100,
-    });
-  };
 
   if (loading && bars.length === 0) return <div>Loading...</div>;
   if (error) return <div>Error: {error.message}</div>;
@@ -719,20 +586,15 @@ function AlpacaChart() {
   return (
     <div>
       <div className="controls">
-        <button onClick={() => fetchHistorical()}>
-          Refresh
+        <button onClick={refetch}>Refresh</button>
+        <button onClick={() => (connected ? unsubscribe() : subscribe())}>
+          {connected ? 'Disconnect' : 'Connect'} live
         </button>
-        <button onClick={() => connected ? unsubscribe() : subscribe()}>
-          {connected ? 'Disconnect' : 'Connect'} Live
-        </button>
-        <span className="status">
-          {connected ? '🟢 Connected' : '⚫ Disconnected'}
-        </span>
+        <span>{connected ? 'Connected' : 'Disconnected'}</span>
       </div>
-      <ChartComponent
-        bars={bars}
-        onLoadMoreData={handleLoadMore}
-      />
+      <div style={{ height: 600 }}>
+        <ChartComponent bars={bars} onLoadMoreData={(oldest) => fetchHistorical({ before: oldest, limit: 100 })} />
+      </div>
     </div>
   );
 }
@@ -740,237 +602,157 @@ function AlpacaChart() {
 
 ## Creating Custom Adapters
 
-You can create adapters for any market data provider by implementing the `BarDataAdapter` interface.
+Implement `BarDataAdapter` for any provider.
 
 ### Adapter Interface
 
 ```typescript
+interface HistoricalDataParams {
+  symbol: string;
+  timeframe: string;
+  before?: number;   // epoch ms: return bars before this time (older page)
+  after?: number;    // epoch ms
+  limit?: number;
+}
+
+interface RealtimeHandlers {
+  onBar?: (bar: OHLCVBar) => void;                    // a new (completed) bar
+  onTrade?: (price: number, volume: number) => void;  // a trade inside the forming bar
+  onError?: (error: Error) => void;
+  onConnect?: () => void;
+  onDisconnect?: () => void;
+}
+
+interface RealtimeSubscription {
+  unsubscribe: () => void;
+}
+
 interface BarDataAdapter {
   fetchHistoricalBars(params: HistoricalDataParams): Promise<OHLCVBar[]>;
-  subscribeRealtime?(
-    symbol: string,
-    handlers: RealtimeHandlers
-  ): RealtimeSubscription;
+  subscribeRealtime?(symbol: string, handlers: RealtimeHandlers): RealtimeSubscription;
   unsubscribeAll?(): void;
 }
 ```
 
-### Example: Polygon.io Adapter
+`BarDataAdapterOptions` (`{ apiKey?, secretKey?, baseUrl?, [key: string]: any }`) is also
+exported as a convenient options type.
+
+### Example: your own backend
+
+The usual production setup: the browser talks to your server, which holds the provider
+keys.
 
 ```typescript
-import { BarDataAdapter, HistoricalDataParams } from './adapters/types';
-import { OHLCVBar } from './types/chart';
+import type { BarDataAdapter, HistoricalDataParams, OHLCVBar } from '@adrienhobbs/candlekit';
+
+export class BackendAdapter implements BarDataAdapter {
+  constructor(private baseUrl = '/api') {}
+
+  async fetchHistoricalBars({ symbol, timeframe, before, after, limit = 500 }: HistoricalDataParams): Promise<OHLCVBar[]> {
+    const url = new URL(`${this.baseUrl}/bars`, window.location.origin);
+    url.searchParams.set('symbol', symbol);
+    url.searchParams.set('timeframe', timeframe);
+    url.searchParams.set('limit', String(limit));
+    if (before) url.searchParams.set('before', String(before));
+    if (after) url.searchParams.set('after', String(after));
+
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`Bars request failed: ${res.status}`);
+    return (await res.json()) as OHLCVBar[];
+  }
+}
+```
+
+### Example: Polygon.io
+
+```typescript
+import type { BarDataAdapter, HistoricalDataParams, OHLCVBar } from '@adrienhobbs/candlekit';
+
+interface PolygonAgg { t: number; o: number; h: number; l: number; c: number; v: number; vw?: number; n?: number }
 
 export class PolygonAdapter implements BarDataAdapter {
-  private apiKey: string;
+  constructor(private apiKey: string) {}
 
-  constructor(apiKey: string) {
-    this.apiKey = apiKey;
-  }
+  async fetchHistoricalBars({ symbol, timeframe, before, limit = 500 }: HistoricalDataParams): Promise<OHLCVBar[]> {
+    // Map your timeframe strings to Polygon's multiplier/timespan; '5Min' here.
+    const [multiplier, timespan] = timeframe === '1Day' ? [1, 'day'] : [5, 'minute'];
+    const to = before ?? Date.now();
+    const from = to - 30 * 24 * 60 * 60 * 1000;
 
-  async fetchHistoricalBars(params: HistoricalDataParams): Promise<OHLCVBar[]> {
-    const { symbol, timeframe, limit = 500 } = params;
+    const url =
+      `https://api.polygon.io/v2/aggs/ticker/${symbol}/range/${multiplier}/${timespan}/${from}/${to}` +
+      `?sort=desc&limit=${limit}&apiKey=${this.apiKey}`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`Polygon error: ${res.status}`);
+    const data: { results?: PolygonAgg[] } = await res.json();
 
-    const url = `https://api.polygon.io/v2/aggs/ticker/${symbol}/range/1/minute?limit=${limit}&apiKey=${this.apiKey}`;
-
-    const response = await fetch(url);
-    const data = await response.json();
-
-    return data.results.map((bar: any) => ({
-      timestamp: bar.t,
-      open: bar.o,
-      high: bar.h,
-      low: bar.l,
-      close: bar.c,
-      volume: bar.v,
-      vwap: bar.vw,
-    }));
+    return (data.results ?? [])
+      .filter((a) => a.t < to)
+      .map((a) => ({
+        timestamp: a.t,
+        open: a.o,
+        high: a.h,
+        low: a.l,
+        close: a.c,
+        volume: a.v,
+        vwap: a.vw,
+        trade_count: a.n,
+      }));
   }
 }
 ```
 
-### Example: Custom Database Adapter
+`useBarsData` sorts the result, so returning newest-first is fine.
+
+### Example: real-time support
 
 ```typescript
-import { BarDataAdapter, HistoricalDataParams } from './adapters/types';
-import { OHLCVBar } from './types/chart';
+import type { RealtimeHandlers, RealtimeSubscription } from '@adrienhobbs/candlekit';
 
-export class DatabaseAdapter implements BarDataAdapter {
-  async fetchHistoricalBars(params: HistoricalDataParams): Promise<OHLCVBar[]> {
-    const { symbol, before, limit = 500 } = params;
-
-    const query = `
-      SELECT * FROM bars
-      WHERE symbol = $1
-      ${before ? 'AND timestamp < $2' : ''}
-      ORDER BY timestamp DESC
-      LIMIT $${before ? '3' : '2'}
-    `;
-
-    const values = before
-      ? [symbol, new Date(before), limit]
-      : [symbol, limit];
-
-    const result = await db.query(query, values);
-
-    return result.rows.map(row => ({
-      timestamp: row.timestamp.getTime(),
-      open: parseFloat(row.open),
-      high: parseFloat(row.high),
-      low: parseFloat(row.low),
-      close: parseFloat(row.close),
-      volume: parseInt(row.volume),
-    }));
-  }
+// inside your adapter class
+subscribeRealtime(symbol: string, handlers: RealtimeHandlers): RealtimeSubscription {
+  const ws = new WebSocket(`wss://api.example.com/stream?symbol=${symbol}`);
+  ws.onopen = () => handlers.onConnect?.();
+  ws.onclose = () => handlers.onDisconnect?.();
+  ws.onerror = () => handlers.onError?.(new Error('Stream error'));
+  ws.onmessage = (event) => {
+    const msg = JSON.parse(event.data);
+    if (msg.type === 'bar') handlers.onBar?.(msg.bar);          // OHLCVBar, epoch ms
+    if (msg.type === 'trade') handlers.onTrade?.(msg.price, msg.size);
+  };
+  return { unsubscribe: () => ws.close() };
 }
 ```
 
-### Example: Mock Data Adapter
+### Mock data
 
-```typescript
-import { BarDataAdapter, HistoricalDataParams } from './adapters/types';
-import { OHLCVBar } from './types/chart';
-
-export class MockAdapter implements BarDataAdapter {
-  async fetchHistoricalBars(params: HistoricalDataParams): Promise<OHLCVBar[]> {
-    const { limit = 500 } = params;
-    const bars: OHLCVBar[] = [];
-    const now = Date.now();
-    let price = 100;
-
-    for (let i = limit - 1; i >= 0; i--) {
-      const timestamp = now - i * 300000; // 5 minutes
-      price += (Math.random() - 0.5) * 2;
-
-      const open = price;
-      const high = price + Math.random() * 1;
-      const low = price - Math.random() * 1;
-      const close = low + Math.random() * (high - low);
-
-      bars.push({
-        timestamp,
-        open,
-        high,
-        low,
-        close,
-        volume: Math.floor(Math.random() * 10000) + 1000,
-      });
-
-      price = close;
-    }
-
-    return bars;
-  }
-}
-```
+For demos and tests, use the bundled `MockAdapter` (see [MockAdapter](#mockadapter))
+rather than writing your own.
 
 ## Best Practices
 
-### 1. Always Validate Data
+1. **Validate external data.** Run provider data through `validateAndNormalizeBars`;
+   `useBarsData` does this for fetched bars and for `setBars`/`prependBars`.
+2. **Use epoch milliseconds.** `normalizeTimestamp` converts seconds; ISO strings must be
+   converted with `new Date(s).getTime()`.
+3. **Keep bars ascending and unique.** `sortBars`, `deduplicateBars` and `mergeBars` do
+   this; indicators receive your array as passed.
+4. **Create adapters once.** `useMemo` or module scope; a new adapter per render restarts
+   subscriptions.
+5. **Pass the hook's `bars` straight to the chart.** Do not swap in fallback data while
+   loading (see Troubleshooting).
+6. **Clean up subscriptions.** `useBarsData` unsubscribes on unmount; if you call
+   `adapter.subscribeRealtime` yourself, call `unsubscribe()` in your effect cleanup.
+7. **Retry with backoff** on network failures:
 
 ```typescript
-import { validateAndNormalizeBars } from './utils/barUtils';
-
-const rawData = await fetchFromAPI();
-const bars = validateAndNormalizeBars(rawData);
-```
-
-### 2. Handle Duplicates
-
-```typescript
-import { deduplicateBars } from './utils/barUtils';
-
-setBars(prev => deduplicateBars([...prev, ...newBars]));
-```
-
-### 3. Maintain Chronological Order
-
-```typescript
-import { sortBars } from './utils/barUtils';
-
-setBars(prev => sortBars([...prev, newBar]));
-```
-
-### 4. Normalize Timestamps
-
-Some APIs return seconds, others milliseconds. Always normalize:
-
-```typescript
-import { normalizeTimestamp } from './utils/barUtils';
-
-const timestamp = normalizeTimestamp(apiTimestamp);
-```
-
-### 5. Implement Error Handling
-
-```typescript
-const { bars, error } = useBarsData({ adapter });
-
-if (error) {
-  // Show user-friendly error message
-  // Offer retry option
-  // Log to error tracking service
-}
-```
-
-### 6. Show Loading States
-
-```typescript
-const { bars, loading } = useBarsData({ adapter });
-
-if (loading && bars.length === 0) {
-  return <LoadingSpinner />;
-}
-```
-
-### 7. Cleanup Subscriptions
-
-```typescript
-useEffect(() => {
-  subscribe();
-  return () => unsubscribe();
-}, [subscribe, unsubscribe]);
-```
-
-### 8. Throttle Updates
-
-Don't update more than once per second for performance:
-
-```typescript
-const throttledUpdate = useCallback(
-  throttle((bar) => appendBar(bar), 1000),
-  []
-);
-```
-
-### 9. Cache Historical Data
-
-Consider caching to reduce API calls:
-
-```typescript
-const cacheKey = `bars_${symbol}_${timeframe}`;
-const cached = localStorage.getItem(cacheKey);
-
-if (cached) {
-  setBars(JSON.parse(cached));
-} else {
-  const data = await fetchHistorical();
-  localStorage.setItem(cacheKey, JSON.stringify(data));
-}
-```
-
-### 10. Handle Network Failures
-
-Implement retry logic with exponential backoff:
-
-```typescript
-async function fetchWithRetry(fn: () => Promise<any>, retries = 3) {
-  for (let i = 0; i < retries; i++) {
+async function fetchWithRetry<T>(fn: () => Promise<T>, retries = 3): Promise<T> {
+  for (let i = 0; ; i++) {
     try {
       return await fn();
     } catch (error) {
-      if (i === retries - 1) throw error;
-      await new Promise(resolve => setTimeout(resolve, Math.pow(2, i) * 1000));
+      if (i >= retries - 1) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 2 ** i * 1000));
     }
   }
 }
@@ -978,113 +760,66 @@ async function fetchWithRetry(fn: () => Promise<any>, retries = 3) {
 
 ## Troubleshooting
 
-### No Data Showing
+### No data showing
 
-**Problem**: Chart is empty
+1. Log `bars.length` and the first bar.
+2. Check the chart's container has a height, or pass `height`. Without `height` the chart
+   follows the container; if the container measures 0 px tall, the chart starts at
+   600 px and stays there.
+3. Check timestamps are milliseconds and prices are positive; `validateAndNormalizeBars`
+   drops invalid bars with a console warning.
+4. Check the network tab and credentials.
 
-**Solutions**:
-1. Check if `bars` array has data: `console.log(bars)`
-2. Verify API credentials are correct
-3. Check network tab for failed requests
-4. Ensure timestamps are in milliseconds
-5. Validate bar data format matches `OHLCVBar` interface
+### Bars not updating after the initial load
 
-### Bars Not Updating After Initial Load
+A common cause is substituting fallback data:
 
-**Problem**: Chart shows initial data but doesn't update when new data arrives
-
-**Common Cause**: Using fallback data that conflicts with adapter data
-
-```typescript
-// ❌ BAD - Don't do this
+```tsx
+// Avoid: switching between two different arrays
 const displayBars = bars.length > 0 ? bars : fallbackBars;
 <ChartComponent bars={displayBars} />
 
-// ✅ GOOD - Pass adapter data directly
+// Prefer: pass the live array
 <ChartComponent bars={bars} />
 ```
 
-**Why**: If fallback data has more bars than initial adapter data, the chart thinks data was lost (not gained) and won't update. Always pass the adapter's `bars` directly to the chart.
+The chart diffs each `bars` array against the previous one, and the load-more logic
+tracks whether the array grew. Swapping between unrelated arrays confuses both.
 
-### Real-Time Updates Not Working
+### Real-time updates not working
 
-**Problem**: WebSocket not receiving data
+1. Check `connected` and the console (the Alpaca adapter logs connection events).
+2. Check the adapter implements `subscribeRealtime`; otherwise `subscribe()` logs a
+   warning only when `debug` is on.
+3. If the forming bar never changes, the adapter is probably sending it through `onBar`
+   repeatedly; `appendBar` ignores repeated timestamps. Send trades through `onTrade`.
+4. Markets may be closed.
 
-**Solutions**:
-1. Check WebSocket connection status: `console.log(connected)`
-2. Verify WebSocket URL is correct
-3. Check authentication (some providers require auth)
-4. Ensure market is open (for real market data)
-5. Check browser console for WebSocket errors
+### Duplicate bars
 
-### Duplicate Bars
+`deduplicateBars(bars)` or `mergeBars(existing, incoming)` before setting state.
 
-**Problem**: Same timestamp appears multiple times
+### Wrong times on the axis
 
-**Solutions**:
-```typescript
-import { deduplicateBars } from './utils/barUtils';
+Timestamps must be epoch ms. The axis shows the viewer's local time zone unless you pass
+`timeZone` (for example `"America/New_York"`) to `ChartComponent`.
 
-// Before setting state
-const unique = deduplicateBars(bars);
-setBars(unique);
-```
+### Memory growth over long sessions
 
-### Wrong Timestamps
+Cap the array, for example `setBars((prev) => prev.slice(-5000))` when it gets long.
 
-**Problem**: Bars showing wrong dates/times
+### API rate limiting (HTTP 429)
 
-**Solutions**:
-```typescript
-import { normalizeTimestamp } from './utils/barUtils';
+Cache responses, page with larger `limit`s, and use a stream instead of polling.
 
-// Convert seconds to milliseconds
-const bar = {
-  ...rawBar,
-  timestamp: normalizeTimestamp(rawBar.timestamp),
-};
-```
+### CORS errors
 
-### Memory Leaks
-
-**Problem**: App slows down over time
-
-**Solutions**:
-1. Limit bar count: Keep only recent N bars
-2. Cleanup subscriptions in `useEffect` return
-3. Clear old data periodically
-
-```typescript
-// Limit to 5000 bars
-if (bars.length > 5000) {
-  setBars(bars.slice(-5000));
-}
-```
-
-### API Rate Limiting
-
-**Problem**: Getting 429 errors
-
-**Solutions**:
-1. Implement request caching
-2. Add delays between requests
-3. Use WebSocket instead of polling
-4. Consider upgrading API plan
-
-### CORS Errors
-
-**Problem**: Browser blocks API requests
-
-**Solutions**:
-1. Use a proxy server
-2. Enable CORS on your API
-3. Use Edge Functions (Supabase)
-4. Request from backend instead
+Call the provider from your backend (see [Example: your own backend](#example-your-own-backend))
+or use a proxy.
 
 ## Support
 
-For more help:
 - [ChartComponent Usage](./chart-component.md)
 - [API Reference](./api-reference.md)
 - [Architecture](./architecture.md)
-- [GitHub Issues](https://github.com/your-repo/issues)
+- [GitHub Issues](https://github.com/adrienhobbs/candlestick-chart/issues)

@@ -1,13 +1,23 @@
 # candlekit roadmap / backlog
 
-Living backlog of candidate features. **Prioritization is workbench-centric** for now —
-candlekit's primary consumer is the lane-engine research workbench, so features that aid
-*reviewing/replaying/annotating historical setups* rank above general-purpose or live-trading
-features. Re-rank when/if candlekit targets a broader public-charting audience.
+Living backlog of candidate features. **Prioritization is review-centric** for now —
+candlekit's consumers are the lane-engine research workbench and operator console, so features
+that aid *reviewing/replaying/annotating historical setups* rank above general-purpose or
+live-trading features. Re-rank when/if candlekit targets a broader public-charting audience.
 
 Status legend: **▶ Next** · **◷ Deferred** · **○ Backlog**
 
 ---
+
+## Unreleased
+
+- **Fix: time-bounded lines and boxes drew full-width** when bar timestamps weren't whole
+  seconds (e.g. `MockAdapter`'s `Date.now()`-based bars). The overlay floored its seconds, so its
+  ends matched no bar and clamped to the plot edges; it now converts them exactly as the bar
+  series does.
+- **Demo** shows the 0.6–0.8 features: ▶/◀ trade marks, signposts, the event rail, a hollow
+  counterfactual exit, focusing a trade, Swing Points at confirmation, a resizable chart that
+  fills its box, and a per-demo indicator key.
 
 ## ✅ Shipped (0.8.0)
 
@@ -27,6 +37,22 @@ Status legend: **▶ Next** · **◷ Deferred** · **○ Backlog**
 - **`focusTradeId` framing keyed on what it frames** (the trade's entry/exit bars), not on array
   identity: no more snapping back to the trade after a host re-render or a load-more.
 - **Swing Points `plotAt: 'confirmation'`** — draw each pivot on the bar it became known.
+
+## ✅ Shipped (0.6.0)
+
+### Price-anchored marks, signposts, event rail
+- **`ChartMarker.shape` `arrowRight` / `arrowLeft`** (▶ / ◀, an entry and an exit fill pointing
+  at its price) and **`ChartMarker.hollow`** (outline only, e.g. the same event in a
+  counterfactual book).
+- **`ChartTrade.markerStyle: 'price'`** — the trade's entry ▶ / exit ◀ at its prices instead of
+  the arrows under / over the bars.
+- **`signposts`** — a dashed vertical line at a bar with a label pill on the top edge;
+  overlapping pills stack into rows.
+- **`railMarkers`** — a strip along the bottom of the price pane for events that aren't a
+  price; marks sharing a bar sit side by side, labels drop when there's no room.
+
+All drawn by one `AnnotationsPrimitive` on the candlestick series; lightweight-charts series
+markers keep everything they can draw.
 
 ## ✅ Shipped (0.7.0)
 

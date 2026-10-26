@@ -11,6 +11,12 @@ you can restyle:
 They are separate because the chart is drawn on a `<canvas>` (which cannot read CSS
 custom properties), while the modals are regular DOM you can style with CSS.
 
+The modals are styled by the package stylesheet, so import it once in your app:
+
+```ts
+import '@adrienhobbs/candlekit/styles.css';
+```
+
 ---
 
 ## 1. Chart canvas — the `theme` prop
@@ -42,8 +48,10 @@ export interface ChartTheme {
 > **Resolve tokens to concrete colors.** The canvas can't read CSS variables, so if
 > your colors come from CSS custom properties, read them with
 > `getComputedStyle(document.documentElement).getPropertyValue('--token')` and pass
-> the resolved strings. `upColor`/`downColor` also color the win/loss trade markers,
-> so markers stay consistent with the candles automatically.
+> the resolved strings. `upColor`/`downColor` also color the win/loss trade markers
+> and the change readout of the built-in OHLC legend, so they stay consistent with the
+> candles automatically. `LineChart` takes the same `theme` prop and ignores the candle
+> and volume fields.
 
 ### Example — a brutalist theme that follows `data-theme`
 
@@ -53,7 +61,7 @@ attribute changes, so `getComputedStyle` returns the new values (a plain
 `useMemo(..., [theme])` would read the pre-toggle values):
 
 ```tsx
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ComponentProps } from 'react';
 import { ChartComponent, type ChartTheme } from '@adrienhobbs/candlekit';
 
 const cssVar = (name: string, fallback: string) =>
@@ -82,7 +90,7 @@ function readChartTheme(): Partial<ChartTheme> {
   };
 }
 
-function ThemedChart(props) {
+function ThemedChart(props: Omit<ComponentProps<typeof ChartComponent>, 'theme'>) {
   const [theme, setTheme] = useState<Partial<ChartTheme>>(readChartTheme);
   useEffect(() => {
     const update = () => setTheme(readChartTheme());
@@ -100,11 +108,9 @@ function ThemedChart(props) {
 
 The indicator browser (`IndicatorBrowser`), the settings dialogs (`SettingsDialog`
 + its form, and `LineSettingsDialog`), and the chart's right-click line **context
-menu** read these CSS custom properties, each with the prior slate value as a
-fallback. Set them
-anywhere that's an ancestor (`:root` is simplest — these render via `fixed`/absolute
-overlays and inherit from the document) and they follow your theme, including a
-`data-theme` switch.
+menu** read these CSS custom properties, each falling back to the slate default below.
+Set them on any ancestor (`:root` is simplest, since these render as `fixed`/absolute
+overlays) and they follow your theme, including a `data-theme` switch.
 
 | Variable | Default | Used for |
 |----------|---------|----------|

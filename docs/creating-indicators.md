@@ -1,53 +1,54 @@
 # Creating Custom Indicators
 
-This guide walks you through creating your own custom indicators for the trading chart.
+How to write an indicator and add it to the chart. An indicator is an
+`IndicatorDefinition` object that you register with `indicatorRegistry`; once registered
+it appears in the `IndicatorBrowser`, gets a generated settings form, and renders on
+`ChartComponent` like a built-in. You do not need to change candlekit.
+
+For the built-in indicators and their settings, see [Indicators](./indicators.md).
 
 ## Step-by-Step Guide
 
-### Step 1: Define Your Indicator
-
-Create a new file in `src/indicators/registry/` for your indicator. For example, `myindicator.ts`.
-
-### Step 2: Import Required Types
+### Step 1: Import the types
 
 ```typescript
 import {
-  IndicatorDefinition,
-  IndicatorCategory,
   ChartSeriesType,
-} from '../core/types';
-import { OHLCVBar } from '../../types/chart';
+  IndicatorCategory,
+  type IndicatorDefinition,
+  type IndicatorOutput,
+} from '@adrienhobbs/candlekit';
 ```
 
-### Step 3: Define the Indicator Structure
+### Step 2: Understand the structure
 
-An indicator definition consists of four main parts:
+A definition has four parts:
 
-1. **Metadata**: Basic information about the indicator
-2. **Settings**: Configuration options with Zod schema
-3. **Render Config**: How to display the indicator
-4. **Calculate**: The calculation function
+1. **Metadata**: id, display name, description, category, version
+2. **Settings**: the configurable fields, used for defaults and the settings form
+3. **Render config**: how the output is drawn
+4. **Calculate**: a function from bars and settings to output points
 
-### Step 4: Create the Indicator Definition
+### Step 3: Write the definition
 
 ```typescript
-export const MyIndicator: IndicatorDefinition = {
+export const MomentumIndicator: IndicatorDefinition = {
   // 1. Metadata
   metadata: {
-    id: 'myindicator',                    // Unique identifier (lowercase, no spaces)
-    name: 'My Indicator',                  // Display name
-    description: 'Description of what this indicator does',
-    category: IndicatorCategory.TREND,     // Category for organization
-    version: '1.0.0',                      // Version number
+    id: 'momentum',                 // unique; also the prefix of instance ids ('momentum-1')
+    name: 'Momentum',               // shown in the browser and as the series title
+    description: 'Close minus the close N bars ago',
+    category: IndicatorCategory.MOMENTUM,
+    version: '1.0.0',
   },
 
-  // 2. Settings Schema
+  // 2. Settings
   settings: {
     period: {
       type: 'number',
       label: 'Period',
-      defaultValue: 14,
-      description: 'Number of bars for calculation',
+      defaultValue: 10,
+      description: 'Bars to look back',
       min: 1,
       max: 500,
       step: 1,
@@ -56,7 +57,6 @@ export const MyIndicator: IndicatorDefinition = {
       type: 'color',
       label: 'Line Color',
       defaultValue: '#3b82f6',
-      description: 'Color of the indicator line',
     },
     lineWidth: {
       type: 'number',
@@ -68,67 +68,63 @@ export const MyIndicator: IndicatorDefinition = {
     },
   },
 
-  // 3. Render Configuration
+  // 3. Render configuration
   renderConfig: {
-    seriesType: ChartSeriesType.LINE,     // LINE, HISTOGRAM, AREA, or POINTS
-    outputCount: 1,                        // Number of lines (1 for single, 3 for Bollinger, etc.)
-    // priceLineVisible: false,            // (line, optional) hide the full-width last-value line —
-                                           //   use for a value that resets/segments over time (e.g. a
-                                           //   per-day level), so the chart isn't dominated by one
-                                           //   flat line at the latest value. A single-output LINE
-                                           //   indicator also renders non-finite points as gaps
-                                           //   (whitespace), so emit NaN to break the line per segment.
+    seriesType: ChartSeriesType.LINE,  // LINE, HISTOGRAM, AREA or POINTS
+    outputCount: 1,                    // number of output fields drawn
+    overlay: false,                    // false = own pane below price; true = on the price pane
+    // priceLineVisible: false,        // hide the full-width last-value line, e.g. for a
+                                       //   level that resets each day. A single-output LINE
+                                       //   also breaks at NaN values, so emit NaN between segments.
   },
 
-  // 4. Calculation Function
-  calculate: (bars, settings) => {
-    // Your calculation logic here
-    const results = [];
-
-    for (let i = 0; i < bars.length; i++) {
-      // Calculate indicator value for each bar
-      const value = calculateValue(bars, i, settings);
-
-      results.push({
-        time: bars[i].timestamp,
-        value: value,
-      });
-    }
-
-    // Filter out invalid values (NaN, null, undefined)
-    return results.filter(point => !isNaN(point.value));
+  // 4. Calculation
+  calculate: (bars, settings): IndicatorOutput[] => {
+    const period = Number(settings.period);
+    return bars.map((bar, i) => ({
+      time: bar.timestamp / 1000,      // seconds, not milliseconds
+      value: i >= period ? bar.close - bars[i - period].close : NaN,
+    }));
   },
 };
 ```
 
-### Step 5: Register the Indicator
+`outputCount` and `overlay` have defaults in the Zod schema but are required by the
+TypeScript type, so set both. The same holds for `metadata.version`.
 
-Open `src/indicators/registry/index.ts` and:
+### Step 4: Register it
 
-1. Import your indicator:
+Register once at startup, after the built-ins (if you use them) and before rendering:
+
 ```typescript
-import { MyIndicator } from './myindicator';
+import { indicatorRegistry, registerBuiltInIndicators } from '@adrienhobbs/candlekit';
+import { MomentumIndicator } from './indicators/momentum';
+
+registerBuiltInIndicators();
+indicatorRegistry.register(MomentumIndicator);
 ```
 
-2. Register it in the `registerBuiltInIndicators` function:
+Registering an id that already exists replaces the earlier definition (with a console
+warning), which is also how you override a built-in.
+
+### Step 5: Add it to a chart
+
+From the `IndicatorBrowser` (it lists every registered definition), or in code:
+
 ```typescript
-export function registerBuiltInIndicators(): void {
-  indicatorRegistry.register(SMAIndicator);
-  indicatorRegistry.register(EMAIndicator);
-  indicatorRegistry.register(RSIIndicator);
-  indicatorRegistry.register(BollingerBandsIndicator);
-  indicatorRegistry.register(MyIndicator);  // Add your indicator here
-}
+const { addIndicator } = useChartAPI();
+addIndicator('momentum', { period: 20 });
 ```
 
-3. Export it:
-```typescript
-export { SMAIndicator, EMAIndicator, RSIIndicator, BollingerBandsIndicator, MyIndicator };
-```
+Persisted instances store only `definitionId` and settings, so a page that restores them
+must register the same definitions first; instances whose definition is missing are not
+drawn.
 
 ## Setting Types
 
-The indicator system supports several setting types:
+Each setting is a `SettingField`. Values are stored on the instance's `settings` under the
+same key; `calculate` receives them, and `defaultValue` is used when an instance is
+created.
 
 ### Number
 ```typescript
@@ -137,9 +133,9 @@ The indicator system supports several setting types:
   label: 'Period',
   defaultValue: 14,
   description: 'Optional description',
-  min: 1,        // Optional minimum value
-  max: 500,      // Optional maximum value
-  step: 1,       // Optional step value
+  min: 1,        // optional
+  max: 500,      // optional
+  step: 1,       // optional
 }
 ```
 
@@ -149,9 +145,11 @@ The indicator system supports several setting types:
   type: 'color',
   label: 'Line Color',
   defaultValue: '#3b82f6',
-  description: 'Optional description',
 }
 ```
+
+The form shows a color picker plus an opacity slider; the stored value is a hex string,
+or `rgba(r, g, b, a)` when opacity is below 100%.
 
 ### Boolean
 ```typescript
@@ -159,11 +157,10 @@ The indicator system supports several setting types:
   type: 'boolean',
   label: 'Show Signals',
   defaultValue: true,
-  description: 'Optional description',
 }
 ```
 
-### Select (Dropdown)
+### Select (dropdown)
 ```typescript
 {
   type: 'select',
@@ -177,41 +174,62 @@ The indicator system supports several setting types:
 }
 ```
 
+Option values are strings.
+
 ### Line Style
 ```typescript
 {
   type: 'lineStyle',
   label: 'Line Style',
-  defaultValue: 'solid',  // 'solid', 'dashed', or 'dotted'
+  defaultValue: 'solid',  // 'solid' | 'dashed' | 'dotted'
 }
 ```
+
+The form offers the choice, but indicator series do not read a `lineStyle` setting when
+drawing; use it only if your own code consumes it.
+
+### Settings the renderer reads
+
+The chart picks some settings up by name:
+
+| Setting | Used by |
+|---|---|
+| `color` | Single-output LINE and HISTOGRAM color; the `value` field of multi-output and POINTS indicators |
+| `lineWidth` | All line series |
+| `<field>Color` | Color of output field `<field>` in multi-output LINE and POINTS indicators (for example `signalColor`, `histogramColor`, `highColor`) |
+| `upperColor`, `middleColor`, `lowerColor` | Band-fill indicators (`vwapColor` is accepted for the middle line) |
+| `showFill`, `fillColor` | Band-fill indicators: `showFill: false` hides the fill |
+| `topColor`, `bottomColor`, `lineColor` | AREA indicators |
+| `pointShape`, `pointPosition`, `pointSize` | POINTS indicators, overriding `renderConfig` |
+
+Any other setting is only passed to `calculate`.
 
 ## Chart Series Types
 
 ### LINE
-Single line indicator:
 ```typescript
 renderConfig: {
   seriesType: ChartSeriesType.LINE,
   outputCount: 1,
+  overlay: true,
 }
 ```
 
 ### HISTOGRAM
-Bar chart indicator:
 ```typescript
 renderConfig: {
   seriesType: ChartSeriesType.HISTOGRAM,
   outputCount: 1,
+  overlay: false,
 }
 ```
 
 ### AREA
-Filled area indicator:
 ```typescript
 renderConfig: {
   seriesType: ChartSeriesType.AREA,
   outputCount: 1,
+  overlay: false,
 }
 ```
 
@@ -264,8 +282,9 @@ don't appear in the OHLC legend's indicator values. Text labels are not supporte
 
 The built-in **Swing Points** (`swingpoints`) is a complete example: dots at swing
 highs and lows. It is a lagging marker. A pivot at bar `i` is only confirmed
-`strength` bars later, but the point is drawn at bar `i`, so the newest `strength`
-bars never carry one.
+`strength` bars later. With `plotAt: 'pivot'` (the default) the point is drawn at bar
+`i`, so the newest `strength` bars never carry one; `plotAt: 'confirmation'` draws it on
+bar `i + strength` (still at bar `i`'s price) instead.
 
 ### Multiple Outputs
 
@@ -279,12 +298,13 @@ shaded fill between the bounds. Set `hasBandFill` + `fillBands`:
 renderConfig: {
   seriesType: ChartSeriesType.LINE,
   outputCount: 3,
+  overlay: true,
   hasBandFill: true,
   fillBands: { upper: 'upper', lower: 'lower' },  // field names on each point
 }
 
 calculate: (bars, settings) => bars.map((bar, i) => ({
-  time: bar.timestamp,
+  time: bar.timestamp / 1000,
   value: middleValue,   // the middle line
   upper: upperValue,
   lower: lowerValue,
@@ -305,142 +325,153 @@ renderConfig: {
 }
 
 calculate: (bars, settings) => bars.map((bar, i) => ({
-  time: bar.timestamp,
+  time: bar.timestamp / 1000,
   value: macdValue,      // line  (uses settings.color)
   signal: signalValue,   // line  (uses settings.signalColor)
   histogram: histValue,  // histogram (uses settings.histogramColor)
 }));
 ```
 
+The series are created from the fields of the first output point, so every point must
+carry the same fields.
+
 > Warm-up bars should emit `NaN` for a field; non-finite values are dropped before
-> rendering.
+> rendering (a single-output LINE turns them into gaps instead).
 
 ## Calculation Function
 
-The calculate function receives:
-- `bars`: Array of OHLCV bar data
-- `settings`: Object with user-configured settings
+`calculate(bars, settings)` receives:
+- `bars`: the `OHLCVBar[]` passed to the chart (timestamps in epoch milliseconds)
+- `settings`: the instance's settings object
 
-And returns an array of indicator outputs:
+and returns one output per bar:
 
 ```typescript
 interface IndicatorOutput {
-  time: number;          // Bar timestamp
-  value: number;         // Main indicator value
-  [key: string]: number; // Additional values for multi-line indicators
+  time: number;          // bar.timestamp / 1000 (UNIX seconds, as lightweight-charts expects)
+  value: number;         // main value
+  [key: string]: number; // extra fields for multi-output indicators
 }
 ```
 
-### Tips for Calculations
+### Tips
 
-1. **Handle Insufficient Data**: Return NaN for bars where you don't have enough data
+1. **Return one point per bar**, with `NaN` where there is not enough data. Do not filter
+   the warm-up out yourself; the renderer drops or gaps non-finite values, and keeping
+   one point per bar keeps every field aligned.
+2. **Use seconds for `time`.** A millisecond `time` does not line up with the candles.
+3. **Coerce settings** you rely on (`Number(settings.period)`): persisted settings come
+   back from JSON, and nothing validates them before `calculate` runs.
+4. **Results are cached** per instance, keyed on the settings and a bars fingerprint, so
+   `calculate` must be a pure function of its arguments.
+5. **Errors are caught.** If `calculate` throws, the calculator logs it and the indicator
+   draws nothing.
+6. **Reuse the exported helpers**: `calculateSMA`, `calculateEMA`, `calculateRSI`,
+   `calculateBollingerBands`, `calculateStandardDeviation`, `padIndicatorArray` (left-pad
+   a shorter result from a TA library with `NaN`), `displaceArray`.
+
+## Complete Example: Cumulative VWAP
+
+A simplified VWAP that resets each day (the built-in `vwap` adds bands and other reset
+periods):
+
 ```typescript
-if (i < settings.period - 1) {
-  return NaN;  // Will be filtered out
-}
-```
+import { ChartSeriesType, IndicatorCategory, type IndicatorDefinition } from '@adrienhobbs/candlekit';
 
-2. **Use Helper Functions**: Place common calculations in `src/indicators/utils/calculations.ts`
-
-3. **Optimize Performance**: The results are cached automatically, so focus on correctness
-
-4. **Validate Inputs**: The system validates settings against your schema automatically
-
-## Complete Example: VWAP Indicator
-
-```typescript
-import {
-  IndicatorDefinition,
-  IndicatorCategory,
-  ChartSeriesType,
-} from '../core/types';
-
-export const VWAPIndicator: IndicatorDefinition = {
+export const DailyVWAPIndicator: IndicatorDefinition = {
   metadata: {
-    id: 'vwap',
-    name: 'VWAP',
-    description: 'Volume Weighted Average Price - average price weighted by volume',
+    id: 'daily-vwap',
+    name: 'Daily VWAP',
+    description: 'Volume-weighted average price, reset at the start of each day',
     category: IndicatorCategory.VOLUME,
     version: '1.0.0',
   },
   settings: {
-    color: {
-      type: 'color',
-      label: 'Line Color',
-      defaultValue: '#f59e0b',
-      description: 'Color of the VWAP line',
-    },
-    lineWidth: {
-      type: 'number',
-      label: 'Line Width',
-      defaultValue: 2,
-      min: 1,
-      max: 5,
-      step: 1,
-    },
+    color: { type: 'color', label: 'Line Color', defaultValue: '#f59e0b' },
+    lineWidth: { type: 'number', label: 'Line Width', defaultValue: 2, min: 1, max: 5, step: 1 },
     resetDaily: {
       type: 'boolean',
       label: 'Reset Daily',
       defaultValue: true,
-      description: 'Reset VWAP at start of each trading day',
+      description: 'Restart the average on each new calendar day (viewer time zone)',
     },
   },
   renderConfig: {
     seriesType: ChartSeriesType.LINE,
     outputCount: 1,
+    overlay: true,
+    priceLineVisible: false,
   },
   calculate: (bars, settings) => {
-    const results = [];
-    let cumulativePV = 0;  // Price * Volume
+    let cumulativePV = 0;
     let cumulativeVolume = 0;
+    let day = '';
 
-    for (let i = 0; i < bars.length; i++) {
-      const bar = bars[i];
-      const typicalPrice = (bar.high + bar.low + bar.close) / 3;
-
-      // Use VWAP from data if available, otherwise calculate
-      if (bar.vwap) {
-        results.push({
-          time: bar.timestamp,
-          value: bar.vwap,
-        });
-      } else {
-        cumulativePV += typicalPrice * bar.volume;
-        cumulativeVolume += bar.volume;
-
-        const vwap = cumulativeVolume > 0 ? cumulativePV / cumulativeVolume : typicalPrice;
-
-        results.push({
-          time: bar.timestamp,
-          value: vwap,
-        });
+    return bars.map((bar) => {
+      const barDay = new Date(bar.timestamp).toDateString();
+      if (settings.resetDaily && barDay !== day) {
+        cumulativePV = 0;
+        cumulativeVolume = 0;
       }
-    }
+      day = barDay;
 
-    return results;
+      const typical = (bar.high + bar.low + bar.close) / 3;
+      cumulativePV += typical * bar.volume;
+      cumulativeVolume += bar.volume;
+
+      return {
+        time: bar.timestamp / 1000,
+        value: cumulativeVolume > 0 ? cumulativePV / cumulativeVolume : typical,
+      };
+    });
   },
 };
 ```
 
+## Contributing a Built-in Indicator
+
+To add an indicator to candlekit itself (rather than to your app), work in the candlekit
+repository:
+
+1. Add `src/indicators/registry/<name>.ts` exporting the definition. Inside the repo,
+   import from the source modules and use the setting builders, which are internal (not
+   exported from the package):
+
+   ```typescript
+   import { IndicatorDefinition, IndicatorCategory, ChartSeriesType } from '../core/types';
+   import { numberSetting, colorSetting, lineWidthSetting } from '../core/settings';
+   ```
+
+2. In `src/indicators/registry/index.ts`, import it, add
+   `indicatorRegistry.register(MyIndicator)` to `registerBuiltInIndicators`, and add it to
+   the export list.
+3. Add its default settings to `src/indicators/core/registry.defaults.test.ts` and a test
+   for the calculation, then run `npm test`.
+4. Document it in [Indicators](./indicators.md).
+
+`fast-technical-indicators` is available as a devDependency for built-ins; it is bundled
+into the published package, so consumers do not install it.
+
 ## Testing Your Indicator
 
-1. **Add it to the chart**: Use the indicator browser to add your new indicator
-2. **Test with different settings**: Try various parameter combinations
-3. **Verify calculations**: Compare with known good implementations
-4. **Test edge cases**: Very small periods, very large periods, missing data
-5. **Check performance**: Ensure calculations complete quickly
+1. **Unit-test `calculate`** with a few hand-built bars and known values (see the
+   [examples](./examples.md#testing-examples)).
+2. **Add it to a chart** from the indicator browser and change each setting.
+3. **Compare** with a reference implementation for a few bars.
+4. **Try edge cases**: fewer bars than the period, very large periods, flat prices, zero
+   volume.
 
 ## Best Practices
 
-1. **Clear naming**: Use descriptive names for your indicator and settings
-2. **Good defaults**: Choose sensible default values that work for most users
-3. **Add descriptions**: Help users understand what each setting does
-4. **Validate early**: Return NaN for invalid calculations rather than throwing errors
-5. **Document formulas**: Add comments explaining the calculation methodology
-6. **Reuse utilities**: Use existing calculation functions when possible
+1. **Clear names** for the indicator and its settings; `label` is what users see.
+2. **Sensible defaults**: they are used for every new instance.
+3. **Descriptions** on settings appear under each field in the form.
+4. **Return NaN rather than throwing** for bars you cannot compute.
+5. **Follow the renderer's setting names** (`color`, `lineWidth`, `<field>Color`) so colors
+   are editable without extra code.
 
 ## Next Steps
 
-- Check out [example indicators](./examples.md) for more implementations
-- Read the [architecture documentation](./architecture.md) to understand the system
-- Review the [API reference](./api-reference.md) for detailed function signatures
+- [Examples](./examples.md): more complete definitions
+- [Architecture](./architecture.md): how definitions are calculated and rendered
+- [API Reference](./api-reference.md): registry, calculator and type signatures

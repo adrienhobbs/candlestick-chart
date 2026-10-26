@@ -1,6 +1,5 @@
-import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
-import { TrendingUp, Settings, Plus, Trash2, RefreshCw } from 'lucide-react';
-import { createChart, BaselineSeries, ColorType, type Time } from 'lightweight-charts';
+import { useState, useMemo, useCallback } from 'react';
+import { TrendingUp, Settings, Plus, Trash2, RefreshCw, Crosshair } from 'lucide-react';
 // Dogfood the public package surface: the dev harness imports candlekit from its
 // published barrel (`./index`) rather than deep relative paths.
 import {
@@ -14,7 +13,16 @@ import {
   registerBuiltInIndicators,
   createPersistenceAdapter,
 } from './index';
-import type { OHLCVBar, ChartTrade, ChartLine, ChartMarker, LineChartSeries } from './index';
+import type {
+  OHLCVBar,
+  ChartTrade,
+  ChartLine,
+  ChartMarker,
+  ChartSignpost,
+  ChartRailMarker,
+  IndicatorInstance,
+  LineChartSeries,
+} from './index';
 // NOTE: ChartAPIProvider / useChartAPIContext are NOT part of the public barrel
 // (`./index`), so they must still be imported from the context module directly.
 import { ChartAPIProvider, useChartAPIContext } from './contexts/ChartAPIContext';
@@ -23,125 +31,23 @@ registerBuiltInIndicators();
 
 const USE_ALPACA = !!(import.meta.env.VITE_ALPACA_API_KEY && import.meta.env.VITE_ALPACA_SECRET_KEY);
 
+// The demo keeps its own indicator set rather than the shared default key.
+const persistenceAdapter = createPersistenceAdapter('localStorage', { key: 'candlekit-demo.indicators' });
 
-// Your raw trade signals
-const rawSignals = [
-  { "t": "2025-11-04T18:45:00Z", "entryIndex": 33, "exitTime": "2025-11-05T14:30:00Z", "pnlPercent": 2.5396986100870724 },
-  { "t": "2025-11-05T19:30:00Z", "entryIndex": 63, "exitTime": "2025-11-05T19:45:00Z", "pnlPercent": -1.2718200862882898 },
-  { "t": "2025-11-19T15:30:00Z", "entryIndex": 312, "exitTime": "2025-11-19T15:45:00Z", "pnlPercent": -1.8011331451481358 },
-  { "t": "2025-11-19T18:45:00Z", "entryIndex": 325, "exitTime": "2025-11-20T14:30:00Z", "pnlPercent": 2.901208533078136 },
-  { "t": "2025-11-21T17:30:00Z", "entryIndex": 373, "exitTime": "2025-11-21T20:00:00Z", "pnlPercent": 1.1852502194907795 },
-  { "t": "2025-11-21T18:15:00Z", "entryIndex": 376, "exitTime": "2025-11-21T20:45:00Z", "pnlPercent": 1.6858917480035607 },
-  { "t": "2025-11-24T18:45:00Z", "entryIndex": 404, "exitTime": "2025-11-24T20:30:00Z", "pnlPercent": 2.074066658830805 },
-  { "t": "2025-11-25T19:15:00Z", "entryIndex": 432, "exitTime": "2025-11-25T20:00:00Z", "pnlPercent": 1.7951871648992073 },
-  { "t": "2025-11-25T19:30:00Z", "entryIndex": 433, "exitTime": "2025-11-26T13:15:00Z", "pnlPercent": 1.749123624993227 },
-  { "t": "2025-11-26T18:15:00Z", "entryIndex": 455, "exitTime": "2025-11-26T20:45:00Z", "pnlPercent": 0.1243265644426073 }
-];
+const WIN = '#22c55e';
+const LOSS = '#ef4444';
 
-export const EquityBaselineChart = () => {
-  const chartContainerRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    // Narrow the ref into a local so the (possibly null) `.current` stays
-    // non-null for the rest of the effect (TS can't narrow `ref.current`
-    // across the createChart / addEventListener calls below).
-    const container = chartContainerRef.current;
-    if (!container) return;
-
-    // 1. Prepare Data
-    // Remove duplicates based on entryIndex and sort by exitTime
-    const uniqueSignals = Array.from(new Map(rawSignals.map(s => [s.entryIndex, s])).values());
-    const sortedSignals = uniqueSignals.sort(
-      (a, b) => new Date(a.exitTime).getTime() - new Date(b.exitTime).getTime(),
-    );
-
-    // Calculate Cumulative PnL
-    let runningPnL = 0;
-    const chartData = sortedSignals.map(signal => {
-      runningPnL += signal.pnlPercent;
-      return {
-        // Lightweight Charts expects seconds (Unix timestamp). The x here is a
-        // real time value, so cast the ordinal seconds to the library's `Time`.
-        time: (new Date(signal.exitTime).getTime() / 1000) as Time,
-        value: runningPnL,
-      };
-    });
-
-    const chart = createChart(container, {
-      layout: {
-        background: { type: ColorType.Solid, color: '#131722' }, // Dark Charcoal
-        textColor: '#d1d4dc', // Light Grey Text
-      },
-      grid: {
-        vertLines: { color: '#1f2937', visible: false }, // Subtle vertical lines
-        horzLines: { color: '#2B2B43' }, // Subtle horizontal lines
-      },
-      width: container.clientWidth,
-      height: 400,
-      timeScale: {
-        borderColor: '#2B2B43',
-        timeVisible: true,
-      },
-      rightPriceScale: {
-        borderColor: '#2B2B43',
-      },
-      localization: {
-        priceFormatter: (p: number) => p.toFixed(2) + '%',
-      },
-    });
-
-    // 3. Add Baseline Series (Dark Theme Colors)
-    const baselineSeries = chart.addSeries(BaselineSeries, {
-      baseValue: { type: 'price', price: 0 },
-      
-      // Top (Profit) - Bright Teal
-      topLineColor: '#00bfa5', 
-      topFillColor1: 'rgba(0, 191, 165, 0.28)',
-      topFillColor2: 'rgba(0, 191, 165, 0.05)',
-      
-      // Bottom (Loss) - Bright Red/Pink
-      bottomLineColor: '#ff5252', 
-      bottomFillColor1: 'rgba(255, 82, 82, 0.05)',
-      bottomFillColor2: 'rgba(255, 82, 82, 0.28)',
-      
-      lineWidth: 2,
-    });
-
-    baselineSeries.setData(chartData);
-    chart.timeScale().fitContent();
-
-    // 4. Handle Resizing
-    const handleResize = () => {
-      if (chartContainerRef.current) {
-        chart.applyOptions({ width: chartContainerRef.current.clientWidth });
-      }
-    };
-    window.addEventListener('resize', handleResize);
-
-    // Cleanup
-    return () => {
-      window.removeEventListener('resize', handleResize);
-      chart.remove();
-    };
-  }, []);
-
-  return (
-    <div className="p-4 border rounded shadow-sm">
-      <h2 className="text-lg font-bold mb-4">Equity Curve (Baseline)</h2>
-      <div 
-        ref={chartContainerRef} 
-        style={{ width: '100%', height: '400px' }} 
-      />
-    </div>
-  );
-};
+type TradeMarkStyle = 'price' | 'arrows';
 
 function AppContent() {
-  const [selectedIndicator, setSelectedIndicator] = useState<any>(null);
+  const [selectedIndicator, setSelectedIndicator] = useState<IndicatorInstance | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isBrowserOpen, setIsBrowserOpen] = useState(false);
   const [selectedBar, setSelectedBar] = useState<OHLCVBar | null>(null);
   const [selectedTradeId, setSelectedTradeId] = useState<string | null>(null);
+  const [focusTradeId, setFocusTradeId] = useState<string | null>(null);
+  const [markStyle, setMarkStyle] = useState<TradeMarkStyle>('price');
+  const [showAnnotations, setShowAnnotations] = useState(true);
   const [symbol] = useState('AAPL');
   const [timeframe] = useState('5Min');
 
@@ -214,47 +120,46 @@ function AppContent() {
     });
   }, [fetchHistorical]);
 
-  const handleAddIndicator = (definitionId: string) => {
-    addIndicator(definitionId);
-  };
-
-  const handleSettingsSave = (indicatorId: string, settings: any) => {
+  const handleSettingsSave = (indicatorId: string, settings: Record<string, unknown>) => {
     updateIndicatorSettings(indicatorId, settings);
     setIsSettingsOpen(false);
     setSelectedIndicator(null);
   };
 
-  // --- Trade overlay demo ----------------------------------------------------
+  const lastClose = bars.length > 0 ? bars[bars.length - 1].close : null;
+
+  // --- Trades ----------------------------------------------------------------
   // Derive demo trades FROM loaded bars so entry/exit timestamps exactly match
   // real bar timestamps (MockAdapter uses dynamic Date.now()-based spacing).
+  // Placed over the newest 500 bars, so scrolling back (which prepends bars) keeps
+  // them on the same bars.
   const demoTrades = useMemo<ChartTrade[]>(() => {
     if (bars.length < 60) return [];
-    const mk = (
-      id: string,
-      ei: number,
-      xi: number,
-      outcome: 'win' | 'loss'
-    ): ChartTrade => ({
-      id,
-      entryTime: bars[ei].timestamp,
-      exitTime: bars[xi].timestamp,
-      entryPrice: bars[ei].close,
-      exitPrice: bars[xi].close,
-      outcome,
-    });
-    // Spread the demo trades across the full loaded range so every marker is
-    // visible at the default fit (indices derived from bars.length).
-    const n = bars.length;
-    const at = (frac: number) => Math.min(n - 1, Math.max(0, Math.round(frac * n)));
+    const base = Math.max(0, bars.length - 500);
+    const n = bars.length - base;
+    const at = (frac: number) => base + Math.min(n - 1, Math.max(0, Math.round(frac * n)));
+    const mk = (id: string, from: number, to: number, outcome: 'win' | 'loss'): ChartTrade => {
+      const ei = at(from);
+      const xi = at(to);
+      return {
+        id,
+        entryTime: bars[ei].timestamp,
+        exitTime: bars[xi].timestamp,
+        entryPrice: bars[ei].close,
+        exitPrice: bars[xi].close,
+        outcome,
+        markerStyle: markStyle,
+      };
+    };
     return [
-      mk('t1', at(0.06), at(0.12), 'win'),
-      mk('t2', at(0.24), at(0.30), 'loss'),
-      mk('t3', at(0.44), at(0.52), 'win'),
+      mk('t1', 0.06, 0.12, 'win'),
+      mk('t2', 0.24, 0.3, 'loss'),
+      mk('t3', 0.44, 0.52, 'win'),
       // A context trade (e.g. refused / counterfactual): drawn faded.
-      { ...mk('t4', at(0.64), at(0.70), 'loss'), muted: true },
-      mk('t5', at(0.82), at(0.90), 'win'),
+      { ...mk('t4', 0.64, 0.7, 'loss'), muted: true },
+      mk('t5', 0.82, 0.9, 'win'),
     ];
-  }, [bars]);
+  }, [bars, markStyle]);
 
   // Show a trade's overlays for the hovered trade (preview) else the selected one.
   const displayedTradeId = hoveredTradeId ?? selectedTradeId;
@@ -273,55 +178,101 @@ function AppContent() {
 
   // Time-bounded trade overlays (entry/stop/target segments + a labeled MFE↔MAE box)
   // anchored to the displayed trade's window — so they auto-hide when scrolled away.
-  const { tradeLines, tradeBands, tradeMarkers } = useMemo(() => {
+  const { tradeLines, tradeBands, tradeMarkers, tradeSignposts } = useMemo(() => {
     const trade = demoTrades.find((t) => t.id === displayedTradeId);
     if (!trade || bars.length === 0) {
-      return { tradeLines: [] as ChartLine[], tradeBands: [], tradeMarkers: [] as ChartMarker[] };
+      return {
+        tradeLines: [] as ChartLine[],
+        tradeBands: [],
+        tradeMarkers: [] as ChartMarker[],
+        tradeSignposts: [] as ChartSignpost[],
+      };
     }
     const PAD = 2;
-    const ei = bars.findIndex((b) => b.timestamp === trade.entryTime);
-    const xi = bars.findIndex((b) => b.timestamp === trade.exitTime);
-    const startTime = bars[Math.max(0, (ei < 0 ? 0 : ei) - PAD)].timestamp;
-    const endTime = bars[Math.min(bars.length - 1, (xi < 0 ? bars.length - 1 : xi) + PAD)].timestamp;
+    const ei = Math.max(0, bars.findIndex((b) => b.timestamp === trade.entryTime));
+    const found = bars.findIndex((b) => b.timestamp === trade.exitTime);
+    const xi = found < 0 ? bars.length - 1 : found;
+    const startTime = bars[Math.max(0, ei - PAD)].timestamp;
+    const endTime = bars[Math.min(bars.length - 1, xi + PAD)].timestamp;
     const entry = trade.entryPrice;
     const stop = entry * 0.985;
     const target = entry * 1.03;
-    const hi = Math.max(trade.entryPrice, trade.exitPrice);
-    const lo = Math.min(trade.entryPrice, trade.exitPrice);
-    const mfe = hi * 1.005;
-    const mae = lo * 0.995;
+    const span = bars.slice(ei, xi + 1);
+    const mfe = Math.max(...span.map((b) => b.high));
+    const mae = Math.min(...span.map((b) => b.low));
+    const mfeBar = span.find((b) => b.high === mfe) ?? bars[ei];
+    const maeBar = span.find((b) => b.low === mae) ?? bars[ei];
     const risk = entry - stop;
     const fmtR = (r: number) => `${r >= 0 ? '+' : ''}${r.toFixed(2)}R`;
     // Read-only + time-bounded → drawn as segments that hide when scrolled off.
     const ro = { deletable: false, draggable: false, editable: false, startTime, endTime } as const;
+    // A counterfactual exit two bars before the real one, drawn hollow.
+    const virtualExit = bars[Math.max(ei, xi - 2)];
     return {
       tradeLines: [
         { id: 'trade-entry', price: entry, color: '#9ca3af', lineStyle: 'solid', title: 'Entry', type: 'entry', ...ro },
-        { id: 'trade-stop', price: stop, color: '#ef4444', lineStyle: 'dashed', title: 'Stop', type: 'stopLoss', ...ro },
-        { id: 'trade-target', price: target, color: '#22c55e', lineStyle: 'dashed', title: 'Target', type: 'takeProfit', ...ro },
+        { id: 'trade-stop', price: stop, color: LOSS, lineStyle: 'dashed', title: 'Stop', type: 'stopLoss', ...ro },
+        { id: 'trade-target', price: target, color: WIN, lineStyle: 'dashed', title: 'Target', type: 'takeProfit', ...ro },
       ] as ChartLine[],
       tradeBands: [
         {
           id: 'trade-mfemae',
-          top: Math.max(mfe, mae),
-          bottom: Math.min(mfe, mae),
+          top: mfe,
+          bottom: mae,
           color: 'rgba(59,130,246,0.12)',
           startTime,
           endTime,
           topLabel: fmtR((mfe - entry) / risk),
           bottomLabel: fmtR((mae - entry) / risk),
-          topLabelColor: '#22c55e', // favorable MFE → green
-          bottomLabelColor: '#ef4444', // adverse MAE → red
+          topLabelColor: WIN,
+          bottomLabelColor: LOSS,
         },
       ],
-      // Free-standing markers at an exact price (here the excursion extremes, at
-      // the middle of the trade for the demo).
       tradeMarkers: [
-        { id: 'mfe', time: bars[Math.round((Math.max(ei, 0) + Math.max(xi, 0)) / 2)].timestamp, price: mfe, color: '#22c55e', text: 'MFE' },
-        { id: 'mae', time: bars[Math.max(ei, 0)].timestamp, price: mae, color: '#ef4444', shape: 'square', text: 'MAE' },
+        { id: 'mfe', time: mfeBar.timestamp, price: mfe, color: WIN, text: 'MFE' },
+        { id: 'mae', time: maeBar.timestamp, price: mae, color: LOSS, shape: 'square', text: 'MAE' },
+        {
+          id: 'virtual-exit',
+          time: virtualExit.timestamp,
+          price: virtualExit.close,
+          color: '#a855f7',
+          shape: 'arrowLeft',
+          hollow: true,
+        },
       ] as ChartMarker[],
+      tradeSignposts: [
+        { id: 'sp-entry', time: trade.entryTime, label: `ENTRY ${entry.toFixed(2)}`, color: '#64748b' },
+        {
+          id: 'sp-exit',
+          time: trade.exitTime,
+          label: `EXIT ${trade.exitPrice.toFixed(2)}`,
+          color: trade.outcome === 'win' ? WIN : LOSS,
+        },
+      ] as ChartSignpost[],
     };
   }, [displayedTradeId, demoTrades, bars]);
+
+  // Event rail: one mark per trade entry (numbered) plus a "timer would have fired"
+  // diamond inside each trade — events with a time but no price.
+  const railMarkers = useMemo<ChartRailMarker[]>(() => {
+    if (!showAnnotations) return [];
+    return demoTrades.flatMap((t, i) => [
+      {
+        id: `rail-entry-${t.id}`,
+        time: t.entryTime,
+        color: t.outcome === 'win' ? WIN : LOSS,
+        shape: 'circle' as const,
+        hollow: t.muted,
+        label: String(i + 1),
+      },
+      {
+        id: `rail-timer-${t.id}`,
+        time: Math.round((t.entryTime + t.exitTime) / 2),
+        color: '#f59e0b',
+        shape: 'diamond' as const,
+      },
+    ]);
+  }, [demoTrades, showAnnotations]);
 
   const handleBarClick = (bar: OHLCVBar | null) => {
     setSelectedBar(bar);
@@ -329,21 +280,12 @@ function AppContent() {
       ? demoTrades.find((t) => t.entryTime === bar.timestamp || t.exitTime === bar.timestamp)
       : null;
     setSelectedTradeId(selected ? selected.id : null);
-    if (bar) {
-      console.log('Selected bar:', {
-        timestamp: new Date(bar.timestamp).toLocaleString(),
-        open: bar.open,
-        high: bar.high,
-        low: bar.low,
-        close: bar.close,
-        volume: bar.volume,
-      });
-    } else {
-      console.log('Bar deselected');
-    }
   };
 
-  const displayBars = bars;
+  const focusTrade = (id: string) => {
+    setSelectedTradeId(id);
+    setFocusTradeId(id);
+  };
 
   // --- LineChart showcase ----------------------------------------------------
   // Inline sample per-trade PnL (%) for three strategy variants, accumulated
@@ -378,6 +320,13 @@ function AppContent() {
     }));
   }, []);
 
+  const pill = (active: boolean) =>
+    `px-3 py-1 text-xs rounded-full border transition ${
+      active
+        ? 'bg-slate-600 border-slate-500 text-white'
+        : 'border-slate-600 text-slate-400 hover:text-slate-200'
+    }`;
+
   return (
     <div className="min-h-screen bg-slate-900">
       <header className="bg-slate-800 border-b border-slate-700 px-6 py-4">
@@ -385,10 +334,10 @@ function AppContent() {
           <div className="flex items-center gap-3">
             <TrendingUp className="text-blue-500" size={28} />
             <div>
-              <h1 className="text-2xl font-bold text-slate-100">Trading Chart</h1>
+              <h1 className="text-2xl font-bold text-slate-100">candlekit</h1>
               <div className="flex items-center gap-2 mt-1">
                 <span className="text-xs text-slate-400">
-                  {USE_ALPACA ? `${symbol} (Alpaca)` : 'Mock Data'}
+                  {USE_ALPACA ? `${symbol} (Alpaca)` : 'Mock data'}
                 </span>
                 {USE_ALPACA && (
                   <span className={`text-xs ${
@@ -449,99 +398,171 @@ function AppContent() {
         )}
         {(!loading || bars.length > 0) && (
           <div className="bg-slate-800 rounded-lg shadow-xl p-6 mb-6">
-            <p className="text-xs text-slate-400 mb-3">
-              <span className="text-slate-300 font-semibold">Try it:</span> right-click to add a line,
-              then <span className="text-slate-300">drag</span> it to reprice or{' '}
-              <span className="text-slate-300">double-click</span> to edit · {' '}
-              <span className="text-slate-300">hover</span> a trade's bars to preview its time-bounded
-              entry/stop/target + MFE↔MAE box (with ±R labels) · scroll to load history.
-            </p>
-            <ChartComponent
-              bars={displayBars}
-            onLoadMoreData={handleLoadMoreData}
-            indicators={indicators}
-            lines={[...lines, ...tradeLines]}
-            priceBands={tradeBands}
-            markers={tradeMarkers}
-            onDeleteLine={removeLine}
-            onAddLine={addLineByType}
-            onClearAllLines={clearAllLines}
-            onLineMove={updateLine}
-            onLineChange={handleLineChange}
-            onHoverBar={handleHoverBar}
-            enableBarSelection={true}
-            onBarClick={handleBarClick}
-            trades={demoTrades}
-            selectedTradeId={selectedTradeId}
-            renderTradePopup={(t) => {
-              const stop = t.entryPrice * 0.985;
-              const risk = t.entryPrice - stop;
-              const r = risk !== 0 ? (t.exitPrice - t.entryPrice) / risk : 0;
-              const isWin = t.outcome === 'win';
-              return (
-                <div className="bg-slate-800 border border-slate-600 rounded px-3 py-2 text-xs text-slate-200 shadow-lg">
-                  <div className="flex items-center justify-between gap-3 mb-1">
-                    <span className="font-bold uppercase tracking-wide">{t.id}</span>
-                    <span className={isWin ? 'text-green-400 font-semibold' : 'text-red-400 font-semibold'}>
-                      {t.outcome}
-                    </span>
-                  </div>
-                  <div className="text-slate-400">
-                    Entry {new Date(t.entryTime).toLocaleTimeString()} @ {t.entryPrice.toFixed(2)}
-                  </div>
-                  <div className="text-slate-400">
-                    Exit {new Date(t.exitTime).toLocaleTimeString()} @ {t.exitPrice.toFixed(2)}
-                  </div>
-                  <div className="mt-1">
-                    R-multiple: <span className="font-mono">{r.toFixed(2)}R</span>
-                  </div>
-                </div>
-              );
-            }}
-            timeZone="America/New_York"
-            sessions
-            showOhlcLegend
-            />
+            <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+              <p className="text-xs text-slate-400 max-w-3xl">
+                <span className="text-slate-300 font-semibold">Try it:</span> right-click to add a line,
+                then <span className="text-slate-300">drag</span> it to reprice or{' '}
+                <span className="text-slate-300">double-click</span> to edit ·{' '}
+                <span className="text-slate-300">hover</span> a trade to preview its entry/stop/target,
+                MFE↔MAE box, signposts and a hollow counterfactual exit · the strip along the bottom is the
+                event rail · <span className="text-slate-300">Escape</span> closes the indicator dialogs ·
+                drag the panel's bottom-right corner: the chart fills whatever height it is given.
+              </p>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-slate-500">Trade marks</span>
+                <button className={pill(markStyle === 'price')} onClick={() => setMarkStyle('price')}>
+                  ▶ ◀ at price
+                </button>
+                <button className={pill(markStyle === 'arrows')} onClick={() => setMarkStyle('arrows')}>
+                  ▲ ▼ arrows
+                </button>
+                <button className={pill(showAnnotations)} onClick={() => setShowAnnotations((v) => !v)}>
+                  Event rail
+                </button>
+              </div>
+            </div>
+            {/* No `height` prop: the chart fills this resizable box. */}
+            <div
+              className="rounded-lg border border-slate-700 overflow-hidden"
+              style={{ height: 560, minHeight: 320, resize: 'vertical' }}
+            >
+              <ChartComponent
+                bars={bars}
+                onLoadMoreData={handleLoadMoreData}
+                indicators={indicators}
+                lines={[...lines, ...tradeLines]}
+                priceBands={tradeBands}
+                markers={tradeMarkers}
+                signposts={showAnnotations ? tradeSignposts : undefined}
+                railMarkers={railMarkers}
+                onDeleteLine={removeLine}
+                onAddLine={addLineByType}
+                onClearAllLines={clearAllLines}
+                onLineMove={updateLine}
+                onLineChange={handleLineChange}
+                onHoverBar={handleHoverBar}
+                enableBarSelection={true}
+                onBarClick={handleBarClick}
+                trades={demoTrades}
+                selectedTradeId={selectedTradeId}
+                focusTradeId={focusTradeId}
+                renderTradePopup={(t) => {
+                  const stop = t.entryPrice * 0.985;
+                  const risk = t.entryPrice - stop;
+                  const r = risk !== 0 ? (t.exitPrice - t.entryPrice) / risk : 0;
+                  const isWin = t.outcome === 'win';
+                  return (
+                    <div className="bg-slate-800 border border-slate-600 rounded px-3 py-2 text-xs text-slate-200 shadow-lg">
+                      <div className="flex items-center justify-between gap-3 mb-1">
+                        <span className="font-bold uppercase tracking-wide">{t.id}</span>
+                        <span className={isWin ? 'text-green-400 font-semibold' : 'text-red-400 font-semibold'}>
+                          {t.outcome}
+                        </span>
+                      </div>
+                      <div className="text-slate-400">
+                        Entry {new Date(t.entryTime).toLocaleTimeString()} @ {t.entryPrice.toFixed(2)}
+                      </div>
+                      <div className="text-slate-400">
+                        Exit {new Date(t.exitTime).toLocaleTimeString()} @ {t.exitPrice.toFixed(2)}
+                      </div>
+                      <div className="mt-1">
+                        R-multiple: <span className="font-mono">{r.toFixed(2)}R</span>
+                      </div>
+                    </div>
+                  );
+                }}
+                timeZone="America/New_York"
+                sessions
+                showOhlcLegend
+              />
+            </div>
           </div>
         )}
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="bg-slate-800 rounded-lg p-6">
-            <h3 className="text-lg font-semibold text-slate-100 mb-4">Trading Lines</h3>
-            <div className="space-y-2">
+            <h3 className="text-lg font-semibold text-slate-100 mb-1">Trades</h3>
+            <p className="text-xs text-slate-400 mb-3">
+              Focus scrolls the chart to a trade once; it stays put while you pan, scroll back for history
+              or bars update.
+            </p>
+            <div className="space-y-1.5 mb-4">
+              {demoTrades.map((t, i) => (
+                <div
+                  key={t.id}
+                  className={`flex items-center justify-between px-3 py-1.5 rounded-lg text-sm ${
+                    t.id === selectedTradeId ? 'bg-slate-600' : 'bg-slate-700'
+                  }`}
+                >
+                  <span className="font-mono text-slate-200">
+                    {i + 1}. {t.id}
+                    {t.muted && <span className="ml-2 text-xs text-slate-400">muted</span>}
+                  </span>
+                  <span className="flex items-center gap-3">
+                    <span className={t.outcome === 'win' ? 'text-green-400 text-xs' : 'text-red-400 text-xs'}>
+                      {t.outcome}
+                    </span>
+                    <button
+                      onClick={() => focusTrade(t.id)}
+                      className="flex items-center gap-1 text-xs text-slate-300 hover:text-white"
+                    >
+                      <Crosshair size={14} /> Focus
+                    </button>
+                  </span>
+                </div>
+              ))}
+            </div>
+            <h4 className="text-sm font-semibold text-slate-200 mb-2">Lines at the last close</h4>
+            <div className="grid grid-cols-2 gap-2">
               <button
-                onClick={() => addEntryLine(15.8)}
-                className="w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition text-sm"
+                disabled={lastClose === null}
+                onClick={() => lastClose !== null && addEntryLine(lastClose)}
+                className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition text-xs disabled:opacity-50"
               >
-                Add Entry @ 15.80
+                Entry
               </button>
               <button
-                onClick={() => addStopLoss(15.5)}
-                className="w-full px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition text-sm"
+                disabled={lastClose === null}
+                onClick={() => lastClose !== null && addStopLoss(lastClose * 0.99)}
+                className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-lg transition text-xs disabled:opacity-50"
               >
-                Add Stop Loss @ 15.50
+                Stop −1%
               </button>
               <button
-                onClick={() => addTakeProfit(16.2)}
-                className="w-full px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition text-sm"
+                disabled={lastClose === null}
+                onClick={() => lastClose !== null && addTakeProfit(lastClose * 1.02)}
+                className="px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white rounded-lg transition text-xs disabled:opacity-50"
               >
-                Add Take Profit @ 16.20
+                Target +2%
               </button>
               <button
-                onClick={() => {
-                  removeLine('entry');
-                  removeLine('stop-loss');
-                  removeLine('take-profit');
-                }}
-                className="w-full px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg transition text-sm"
+                onClick={clearAllLines}
+                className="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-white rounded-lg transition text-xs"
               >
-                Clear All Lines
+                Clear lines
               </button>
             </div>
           </div>
 
           <div className="bg-slate-800 rounded-lg p-6">
-            <h3 className="text-lg font-semibold text-slate-100 mb-4">Indicators</h3>
+            <h3 className="text-lg font-semibold text-slate-100 mb-1">Indicators</h3>
+            <p className="text-xs text-slate-400 mb-3">
+              Saved in localStorage under this demo's own key.
+            </p>
+            <div className="flex flex-wrap gap-2 mb-3">
+              <button
+                onClick={() => addIndicator('swingpoints', { plotAt: 'confirmation' })}
+                className={pill(false)}
+              >
+                + Swing Points (at confirmation)
+              </button>
+              <button onClick={() => addIndicator('vwap')} className={pill(false)}>
+                + VWAP
+              </button>
+              <button onClick={() => addIndicator('rsi')} className={pill(false)}>
+                + RSI
+              </button>
+            </div>
             <div className="space-y-2">
               {indicators.map((indicator) => (
                 <div
@@ -556,12 +577,14 @@ function AppContent() {
                         setIsSettingsOpen(true);
                       }}
                       className="text-slate-400 hover:text-slate-200 transition"
+                      aria-label={`Settings for ${indicator.name}`}
                     >
                       <Settings size={18} />
                     </button>
                     <button
                       onClick={() => removeIndicator(indicator.id)}
                       className="text-slate-400 hover:text-red-400 transition"
+                      aria-label={`Remove ${indicator.name}`}
                     >
                       <Trash2 size={18} />
                     </button>
@@ -653,17 +676,13 @@ function AppContent() {
       <IndicatorBrowser
         isOpen={isBrowserOpen}
         onClose={() => setIsBrowserOpen(false)}
-        onAddIndicator={handleAddIndicator}
+        onAddIndicator={(definitionId) => addIndicator(definitionId)}
       />
     </div>
   );
 }
 
 function App() {
-  const persistenceAdapter = useMemo(() => {
-    return createPersistenceAdapter('localStorage');
-  }, []);
-
   return (
     <ChartAPIProvider persistenceAdapter={persistenceAdapter}>
       <AppContent />

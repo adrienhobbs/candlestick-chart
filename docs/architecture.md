@@ -1,360 +1,312 @@
-# Indicator System Architecture
+# Architecture
 
-This document explains the architecture and design decisions behind the modular indicator system.
+How candlekit is put together: the chart component and its hooks, the canvas
+primitives, the indicator system, and the data layer. Paths are relative to `src/` in the
+candlekit repository; consumers use the named exports of `@adrienhobbs/candlekit`.
 
 ## Overview
 
-The indicator system follows a plugin-based architecture where indicators are self-contained modules that can be added without modifying core code. The system consists of several key components working together:
+```
+┌──────────────────────────────────────────────────────────────────┐
+│ Host application                                                 │
+│   your state, useChartAPI, useBarsData, your own UI              │
+└───────────────┬──────────────────────────────┬───────────────────┘
+                │ bars, indicators, lines,     │ adapters
+                │ trades, markers, ...         │ (Alpaca, Mock, custom)
+┌───────────────┴──────────────┐  ┌────────────┴───────────────────┐
+│ Components                   │  │ Data layer                     │
+│ ChartComponent, LineChart,   │  │ BarDataAdapter, useBarsData,   │
+│ IndicatorBrowser,            │  │ barUtils                       │
+│ SettingsDialog, ...          │  └────────────────────────────────┘
+└───────────────┬──────────────┘
+                │ chart-hooks/* (one concern each)
+┌───────────────┴──────────────────────────────────────────────────┐
+│ lightweight-charts v5: series, panes, markers plugins,           │
+│ series primitives (Bands, Sessions, TradeOverlays, Annotations)  │
+└───────────────┬──────────────────────────────────────────────────┘
+                │ indicator data
+┌───────────────┴──────────────────────────────────────────────────┐
+│ Indicator system: registry, calculator (cache), persistence,     │
+│ built-in definitions                                             │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+`ChartComponent` holds no data of its own beyond view state (selection, popups, drag).
+The host owns bars, indicators and lines and passes them as props; the component diffs
+them into lightweight-charts.
+
+## Directory Structure
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                     User Interface Layer                     │
-│  (IndicatorBrowser, SettingsDialog, ChartComponent)         │
-└─────────────────────────┬───────────────────────────────────┘
-                          │
-┌─────────────────────────┴───────────────────────────────────┐
-│                    Application Layer                         │
-│              (useChartAPI, App Component)                    │
-└─────────────────────────┬───────────────────────────────────┘
-                          │
-┌─────────────────────────┴───────────────────────────────────┐
-│                      Core System                             │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐     │
-│  │   Registry   │  │  Calculator  │  │ Persistence  │     │
-│  └──────────────┘  └──────────────┘  └──────────────┘     │
-└─────────────────────────┬───────────────────────────────────┘
-                          │
-┌─────────────────────────┴───────────────────────────────────┐
-│                   Indicator Definitions                      │
-│         (SMA, EMA, RSI, Bollinger, Custom...)               │
-└─────────────────────────────────────────────────────────────┘
+src/
+├── index.ts                  # Public barrel (the package entry)
+├── lib.css                   # Tailwind entry compiled to dist/styles.css
+├── App.tsx, main.tsx         # Dev harness / demo, not exported
+├── adapters/
+│   ├── types.ts              # BarDataAdapter, HistoricalDataParams, RealtimeHandlers, ...
+│   ├── alpaca.ts             # AlpacaBarAdapter (REST bars + IEX WebSocket)
+│   └── mock.ts               # MockAdapter (random-walk bars)
+├── components/
+│   ├── ChartComponent.tsx    # Candlestick chart; composes the chart-hooks below
+│   ├── LineChart.tsx         # Ordinal-x multi-line chart
+│   ├── IndicatorBrowser.tsx  # Indicator picker modal
+│   ├── SettingsDialog.tsx    # Indicator settings modal
+│   ├── IndicatorSettingsForm.tsx  # Form generated from a settings schema
+│   ├── LineSettingsDialog.tsx     # Price-line edit modal
+│   ├── OhlcLegend.tsx        # Default crosshair OHLC legend
+│   ├── useDialogEscape.ts    # Shared Escape stack for the dialogs
+│   ├── chart-constants.ts    # Layout and interaction constants
+│   ├── bars-sync-plan.ts     # Pure: setData vs. update vs. nothing
+│   ├── transformSeriesData.ts # Indicator outputs to series points (drop or gap NaN)
+│   ├── indicator-points.ts   # Pure: POINTS outputs to series markers
+│   ├── trade-markers.ts      # Pure: trades to entry/exit markers
+│   ├── annotations-layout.ts # Pure: signpost pill rows, rail mark offsets
+│   ├── lineChartData.ts      # Pure: ordinal points to line data
+│   ├── ohlcLegendData.ts     # Pure: legend values and change math
+│   └── chart-hooks/
+│       ├── useChartLifecycle.ts  # Create/destroy chart + series, resize, pointer handling, load-more
+│       ├── useBarsSync.ts        # Feed bars into candle + volume series
+│       ├── useIndicatorSeries.ts # Build/refresh indicator series, panes, POINTS markers
+│       ├── usePriceLines.ts      # Price lines + delete buttons
+│       ├── usePriceBands.ts      # Full-width shaded price bands
+│       ├── useTradeOverlays.ts   # Time-bounded line segments and boxes
+│       ├── useTradeMarkers.ts    # Trade entry/exit + host markers + selected-bar marker
+│       ├── useAnnotations.ts     # Signposts, event rail, price-style and hollow markers
+│       ├── useSessions.ts        # Session shading + day separators
+│       ├── useSpotlight.ts       # Selected-bar highlight
+│       ├── useTradeFocus.ts      # Scroll a focused trade into view
+│       ├── usePopupPosition.ts   # Trade popup anchoring
+│       ├── useOhlcLegend.ts      # Crosshair legend data
+│       └── useHoverBar.ts        # onHoverBar callback
+├── contexts/
+│   └── ChartAPIContext.tsx   # Provider wrapper around useChartAPI (dev harness; not exported)
+├── hooks/
+│   ├── useChartAPI.ts        # Indicator + price-line state, persistence
+│   ├── useBarsData.ts        # Bar state + adapter fetch/subscribe
+│   └── useRealtimeUpdates.ts # Legacy random-price simulator (still exported)
+├── indicators/
+│   ├── index.ts              # Indicator barrel
+│   ├── core/
+│   │   ├── types.ts          # Zod schemas + types (definitions, settings, render config)
+│   │   ├── registry.ts       # indicatorRegistry
+│   │   ├── calculator.ts     # indicatorCalculator (cached)
+│   │   ├── persistence.ts    # PersistenceAdapter, localStorage / noop adapters
+│   │   └── settings.ts       # numberSetting / colorSetting / lineWidthSetting builders
+│   ├── registry/             # 23 built-in definitions + registerBuiltInIndicators
+│   ├── primitives/
+│   │   ├── BandsPrimitive.ts         # Fill between upper/lower band series
+│   │   ├── SessionsPrimitive.ts      # Session shading, day separators
+│   │   ├── TradeOverlaysPrimitive.ts # Bounded segments and boxes with labels
+│   │   ├── AnnotationsPrimitive.ts   # Signposts, rail, ▶/◀ and hollow markers
+│   │   └── overlay-geometry.ts       # Shared time-span clamping
+│   └── utils/
+│       └── calculations.ts   # SMA, EMA, RSI, Bollinger, std dev, padding helpers
+├── sessions/
+│   └── sessions.ts           # Pure session classification + US_EQUITY_PRESET
+├── constants/
+│   └── colors.ts             # Shared palette, band fill, win/loss colors
+├── types/
+│   └── chart.ts              # OHLCVBar, ChartLine, ChartTrade, ChartMarker, ChartTheme, ...
+└── utils/
+    ├── barUtils.ts           # Bar validation, sorting, merging, live updates
+    ├── chartTheme.ts         # DEFAULT_CHART_THEME, shared layout options
+    └── nearestLine.ts        # Pure hit-testing for line drag/edit
 ```
 
-## Core Components
+Pure modules (no lightweight-charts or DOM) sit next to the hook or primitive that uses
+them and have unit tests beside them (`*.test.ts`).
 
-### 1. Type System (`src/indicators/core/types.ts`)
+## Chart Component
 
-The foundation of the system uses Zod schemas for type-safe configuration:
+`ChartComponent` is a thin composition of hooks in `components/chart-hooks/`, each owning
+one concern. They share refs created in the component (chart, candlestick series, volume
+series, indicator series map, price-line map) rather than state, so updates go straight
+to lightweight-charts without re-rendering React.
+
+- **Create once, apply options.** `useChartLifecycle` creates the chart and the candle and
+  volume series once per mount. Prop changes (theme, height, time zone, session config)
+  are applied with `applyOptions` or by updating a primitive in place, never by
+  recreating the chart.
+- **Bars diffing.** `useBarsSync` sorts and dedupes `bars`, then `planBarsSync` decides:
+  `update` when only the last bar changed (a forming bar ticking), `set` for anything else
+  (first load, prepended history, a different symbol), `none` when nothing changed. All
+  bars but the last are compared, because two symbols over the same window share
+  timestamps.
+- **Load more.** When the visible logical range starts within 5 bars of the left edge,
+  `onLoadMoreData(oldestTimestamp)` fires once; it re-arms after `bars` grows.
+- **Sizing.** With `height` set the chart is that tall; without it the chart follows its
+  container's height.
+- **Primitives.** Drawing that series cannot do is done by series primitives attached to
+  the candlestick series: `SessionsPrimitive`, `TradeOverlaysPrimitive` (bounded
+  `ChartLine` segments and `PriceBand` boxes) and `AnnotationsPrimitive` (signposts, the
+  event rail, `▶`/`◀` and hollow markers, `markerStyle: 'price'` trade marks).
+  `BandsPrimitive` is attached to an indicator's upper band series for band fills.
+- **Markers.** Trade markers and host `markers` share one lightweight-charts markers plugin.
+  Each POINTS indicator field gets its own plugin, so indicator points never replace them.
+- **Dialogs.** `IndicatorBrowser`, `SettingsDialog` and `LineSettingsDialog` register with
+  `useDialogEscape`, a stack with one capture-phase `keydown` listener on `window`. Escape
+  closes only the innermost open dialog and stops propagation.
+
+## Indicator System
+
+### Type System (`indicators/core/types.ts`)
+
+Definitions are described by Zod schemas, from which the TypeScript types are inferred:
 
 ```typescript
-// Indicator metadata
-interface IndicatorMetadata {
-  id: string;              // Unique identifier
-  name: string;            // Display name
-  description: string;     // User-facing description
-  category: IndicatorCategory;  // TREND, MOMENTUM, etc.
-  version: string;         // Version number
-}
-
-// Settings schema
-interface SettingField {
-  type: 'number' | 'color' | 'boolean' | 'select' | 'lineStyle';
-  label: string;
-  defaultValue: any;
-  description?: string;
-  min?: number;           // For numbers
-  max?: number;           // For numbers
-  step?: number;          // For numbers
-  options?: Array<{label: string, value: string}>;  // For select
-}
-
-// Complete indicator definition
 interface IndicatorDefinition {
-  metadata: IndicatorMetadata;
-  settings: Record<string, SettingField>;
-  renderConfig: RenderConfig;
-  calculate: IndicatorCalculation;
+  metadata: IndicatorMetadata;       // id, name, description, category, version
+  settings: IndicatorSettings;       // Record<string, SettingField>
+  renderConfig: RenderConfig;        // seriesType, outputCount, overlay, bands, POINTS options
+  calculate: (bars: OHLCVBar[], settings: Record<string, any>) => IndicatorOutput[];
 }
 
-// Runtime instance
 interface IndicatorInstance {
-  id: string;              // Instance ID (e.g., 'sma-1')
-  definitionId: string;    // Definition ID (e.g., 'sma')
-  name: string;            // Instance name (e.g., 'SMA(1)')
+  id: string;              // e.g. 'sma-1'
+  definitionId: string;    // e.g. 'sma'
+  name: string;            // e.g. 'SMA(1)'
   settings: Record<string, any>;
   data?: IndicatorOutput[];
 }
 ```
 
-**Design Decision**: Using Zod provides both compile-time TypeScript types and runtime validation, ensuring type safety throughout the application.
+`IndicatorOutput.time` is in UNIX seconds (`bar.timestamp / 1000`), the unit
+lightweight-charts uses. Full shapes are in the [API Reference](./api-reference.md#type-definitions).
 
-### 2. Indicator Registry (`src/indicators/core/registry.ts`)
+### Registry (`indicators/core/registry.ts`)
 
-Centralized registry for managing indicator definitions and creating instances:
+A module-level singleton, `indicatorRegistry`, mapping `metadata.id` to a definition. It
+starts empty; `registerBuiltInIndicators()` registers the built-ins and hosts
+`register()` their own. `createInstance` fills defaults from the settings schema and
+names instances from a per-definition counter (`sma-1`, `sma-2`, …).
 
-```typescript
-class IndicatorRegistry {
-  // Register new indicators
-  register(definition: IndicatorDefinition): void
+Because the registry is a singleton, every chart on the page sees the same set of
+definitions.
 
-  // Retrieve indicators
-  get(id: string): IndicatorDefinition | undefined
-  getAll(): IndicatorDefinition[]
-  getByCategory(category: IndicatorCategory): IndicatorDefinition[]
-  search(query: string): IndicatorDefinition[]
+### Calculator (`indicators/core/calculator.ts`)
 
-  // Create instances with auto-naming
-  createInstance(definitionId: string, customSettings?: Record<string, any>): IndicatorInstance
+`indicatorCalculator.calculate(instance, bars)` runs the definition and caches the result
+per instance ID. A cached entry is reused only while:
 
-  // Validate settings
-  validateSettings(definitionId: string, settings: Record<string, any>): boolean
-}
-```
+- the settings serialize to the same JSON, and
+- the bars fingerprint matches: bar count, first and last timestamp, and the last bar's
+  OHLCV.
 
-**Design Decision**: The registry pattern provides a single source of truth for all indicator definitions and handles instance creation with automatic naming (sma-1, sma-2, etc.).
+Bar count alone is not enough: switching symbol or window usually yields the same number
+of bars. The fingerprint is O(1) because `calculate` runs on every bars update. A
+mutation strictly inside the history that keeps the length and both ends unchanged is not
+detected; call `invalidateCache` in that case.
 
-### 3. Calculator (`src/indicators/core/calculator.ts`)
-
-Handles indicator calculation with caching:
-
-```typescript
-class IndicatorCalculator {
-  // Calculate indicator values with caching
-  calculate(instance: IndicatorInstance, bars: OHLCVBar[]): IndicatorOutput[]
-
-  // Cache management
-  invalidateCache(instanceId?: string): void
-  getCacheSize(): number
-}
-```
-
-**Caching Strategy**:
-- Cache key: `instanceId`
-- Cache validity: Checked against settings hash and data length
-- Invalidation: Automatic on settings changes, manual on data updates
-- Storage: In-memory Map for fast access
-
-**Design Decision**: Caching prevents redundant calculations when rendering, significantly improving performance with multiple indicators.
-
-### 4. Persistence Layer (`src/indicators/core/persistence.ts`)
-
-Abstracted persistence with multiple adapters:
+### Persistence (`indicators/core/persistence.ts`)
 
 ```typescript
 interface PersistenceAdapter {
-  saveIndicators(indicators: IndicatorInstance[]): Promise<void>
-  loadIndicators(): Promise<IndicatorInstance[]>
-  deleteIndicator(id: string): Promise<void>
-}
-
-// Available adapters
-class SupabasePersistenceAdapter implements PersistenceAdapter { }
-class LocalStoragePersistenceAdapter implements PersistenceAdapter { }
-class NoOpPersistenceAdapter implements PersistenceAdapter { }
-```
-
-**Design Decision**: The adapter pattern allows developers to:
-- Use Supabase for cloud sync (default)
-- Use localStorage for local-only persistence
-- Use NoOp to disable persistence entirely
-- Implement custom adapters for other backends
-
-### 5. Auto-Generated Forms (`src/components/IndicatorSettingsForm.tsx`)
-
-Settings forms are generated from Zod schemas:
-
-```typescript
-function renderField(key: string, field: SettingField, value: any, onChange: Function) {
-  switch (field.type) {
-    case 'number':  return <NumberInput {...field} />
-    case 'color':   return <ColorPicker {...field} />
-    case 'boolean': return <Checkbox {...field} />
-    case 'select':  return <Select {...field} />
-    case 'lineStyle': return <LineStyleSelect {...field} />
-  }
+  saveIndicators(indicators: IndicatorInstance[]): Promise<void>;
+  loadIndicators(): Promise<IndicatorInstance[]>;
+  deleteIndicator(id: string): Promise<void>;
 }
 ```
 
-**Design Decision**: Auto-generation eliminates boilerplate UI code and ensures settings UI always matches the schema.
+Built in: `LocalStoragePersistenceAdapter` (key `chart_indicators` by default) and
+`NoOpPersistenceAdapter`, created with `createPersistenceAdapter('localStorage' | 'noop',
+{ key? })`. Charts that should keep separate indicator sets need separate keys. Any other
+backend is a custom object implementing the interface.
+
+### Rendering (`components/chart-hooks/useIndicatorSeries.ts`)
+
+When the `indicators` prop changes, every indicator series is removed and rebuilt; when
+`bars` changes, the existing series are re-fed. Per definition:
+
+| renderConfig | Rendered as |
+|---|---|
+| `LINE`, `outputCount: 1` | One line series; non-finite values become whitespace, so the line breaks there |
+| `LINE` with `hasBandFill` + `fillBands` | Upper, middle and lower line series plus a `BandsPrimitive` fill (unless `showFill` is `false`) |
+| `LINE`, `outputCount > 1`, no band fill | One series per output field; a field named `histogram` is a histogram, others are lines |
+| `HISTOGRAM` | One histogram series |
+| `AREA` | One area series (`topColor`, `bottomColor`, `lineColor` settings) |
+| `POINTS` | Series markers on the candlestick series, one markers plugin per drawn field |
+
+`overlay: false` puts the indicator in its own pane below the volume pane (pane index 2
+and up); POINTS always draw on the price pane. Colors come from instance settings
+(`color`, `<field>Color`, `upperColor`/`middleColor`/`lowerColor`, `fillColor`), falling
+back to a shared palette.
+
+### Settings forms (`components/IndicatorSettingsForm.tsx`)
+
+The settings dialog renders one control per `SettingField` type: `number`, `color` (with
+an opacity slider, stored as hex or `rgba(...)`), `boolean`, `select`, `lineStyle`. A new
+indicator needs no UI code.
+
+## Data Layer
+
+```
+Provider ──► BarDataAdapter ──► useBarsData ──► bars ──► <ChartComponent bars={bars} />
+            (fetchHistoricalBars,   (validate, sort,
+             subscribeRealtime)      dedupe, live updates)
+```
+
+Adapters convert a provider's format to `OHLCVBar` (timestamps in epoch milliseconds).
+`useBarsData` is optional; any code that produces an `OHLCVBar[]` can drive the chart.
+See the [Data Management Guide](./data-management.md).
 
 ## Data Flow
 
 ### Adding an Indicator
 
 ```
-User clicks "Add Indicator"
-  → IndicatorBrowser displays all registered indicators
-  → User selects indicator
-  → Registry.createInstance(definitionId)
-  → Instance created with default settings and unique ID
-  → useChartAPI adds to indicators array
-  → PersistenceAdapter saves to storage
-  → ChartComponent calculates and renders
+User picks an indicator in IndicatorBrowser
+  → onAddIndicator(definitionId)
+  → useChartAPI.addIndicator → indicatorRegistry.createInstance (defaults + custom settings)
+  → indicators state updated → persistenceAdapter.saveIndicators(all)
+  → ChartComponent: useIndicatorSeries rebuilds series → indicatorCalculator.calculate
 ```
 
 ### Updating Settings
 
 ```
-User clicks settings icon
-  → SettingsDialog opens with current settings
-  → Form auto-generated from definition schema
-  → User modifies settings
-  → Validation against schema
-  → useChartAPI.updateIndicatorSettings()
-  → Calculator.invalidateCache(instanceId)
-  → PersistenceAdapter saves changes
-  → ChartComponent recalculates and re-renders
+SettingsDialog → onSave(id, settings)
+  → useChartAPI.updateIndicatorSettings → indicatorCalculator.invalidateCache(id)
+  → persistenceAdapter.saveIndicators(all)
+  → series rebuilt with the new settings
 ```
 
 ### Loading from Persistence
 
 ```
-App initializes
-  → useChartAPI calls persistenceAdapter.loadIndicators()
-  → Indicators loaded from Supabase/localStorage
-  → State initialized with loaded indicators
-  → ChartComponent calculates and renders all indicators
+useChartAPI mounts (or the adapter identity changes)
+  → persistenceAdapter.loadIndicators()
+  → indicators state set, isLoadingIndicators = false
+  → ChartComponent renders instances whose definitionId is registered
 ```
 
-## Directory Structure
-
-```
-src/indicators/
-├── core/                      # Core system components
-│   ├── types.ts              # Type definitions and Zod schemas
-│   ├── registry.ts           # Indicator registry
-│   ├── calculator.ts         # Calculation engine with caching
-│   └── persistence.ts        # Persistence adapters
-├── registry/                  # Indicator definitions
-│   ├── index.ts              # Registration function
-│   ├── sma.ts                # Simple Moving Average
-│   ├── ema.ts                # Exponential Moving Average
-│   ├── rsi.ts                # Relative Strength Index
-│   ├── bollinger.ts          # Bollinger Bands
-│   └── [custom].ts           # Your custom indicators
-├── calculations/              # Calculation utilities
-│   └── calculations.ts        # Reusable calculation functions
-├── utils/                     # Helper utilities
-└── index.ts                   # Main export file
-```
+Saving only starts after the load resolves, so a slow load cannot overwrite stored
+indicators with an empty list.
 
 ## Design Principles
 
-### 1. Separation of Concerns
-Each component has a single responsibility:
-- Registry: Manage definitions and create instances
-- Calculator: Compute indicator values
-- Persistence: Store and retrieve indicators
-- UI Components: Display and interact with indicators
-
-### 2. Immutability
-Indicator instances are treated as immutable:
-- Settings updates create new instances
-- Calculations never modify source data
-- State updates use functional patterns
-
-### 3. Type Safety
-Strong typing throughout:
-- Zod schemas for runtime validation
-- TypeScript interfaces for compile-time safety
-- Generic types for flexible implementations
-
-### 4. Extensibility
-Easy to extend without modification:
-- Add indicators by creating new definitions
-- Add persistence layers by implementing adapter interface
-- Add setting types by extending form renderer
-
-### 5. Performance
-Optimized for real-time charts:
-- Calculation results cached
-- React hooks prevent unnecessary re-renders
-- Efficient data structures (Maps for O(1) lookups)
-
-## Integration Points
-
-### Chart Component Integration
-
-The ChartComponent consumes indicators and handles rendering:
-
-```typescript
-indicators.forEach((indicator) => {
-  const definition = indicatorRegistry.get(indicator.definitionId);
-  const data = indicatorCalculator.calculate(indicator, bars);
-
-  // Create appropriate series based on renderConfig
-  if (definition.renderConfig.seriesType === 'line') {
-    const series = chart.addSeries(LineSeries, {
-      color: indicator.settings.color,
-      lineWidth: indicator.settings.lineWidth,
-    });
-    series.setData(data);
-  }
-});
-```
-
-### Hook Integration
-
-The `useChartAPI` hook provides a clean API for managing indicators:
-
-```typescript
-const {
-  indicators,              // Current indicators
-  addIndicator,           // Add new indicator
-  removeIndicator,        // Remove indicator
-  updateIndicatorSettings, // Update settings
-} = useChartAPI({ persistenceAdapter });
-```
-
-## Security Considerations
-
-### RLS Policies
-Supabase table has Row Level Security enabled:
-- Users can only access their own indicators
-- Authentication required for all operations
-- Policies enforce user_id matching
-
-### Data Validation
-- Settings validated against Zod schema before saving
-- Invalid configurations rejected at runtime
-- Type safety prevents common errors
+- **Host owns the data.** The chart renders what it is given; no fetching, no hidden
+  stores. Props that are arrays should be memoized, since a new identity re-applies them.
+- **Extensible without forking.** Indicators are registered at run time, adapters and
+  persistence are interfaces, and render options live on the definition.
+- **Pure core, thin hooks.** Data shaping (bars diffing, markers, legend math, session
+  classification, overlay geometry) lives in pure, unit-tested modules; hooks only wire it
+  to lightweight-charts.
+- **Canvas theming via props, DOM theming via CSS.** The canvas takes a `ChartTheme`; the
+  modals read `--ck-*` CSS variables. See [Theming](./theming.md).
 
 ## Performance Characteristics
 
-### Time Complexity
-- Registry lookup: O(1)
-- Cache lookup: O(1)
-- Calculation: O(n) where n = number of bars
-- Persistence save: O(m) where m = number of indicators
+- Registry and cache lookups are `Map` lookups.
+- Indicator calculation is O(n) per indicator for most built-ins and is skipped on a cache
+  hit.
+- A forming bar that ticks is applied with a single `update` call on the candle and volume
+  series instead of `setData`. Indicator series are currently re-fed with `setData` on
+  every bars change.
+- Changing the `indicators` array rebuilds all indicator series, so keep its identity
+  stable between real changes.
 
-### Space Complexity
-- Cache storage: O(i * d) where i = indicators, d = data points
-- Memory footprint: Minimal, only calculated data cached
+## Testing
 
-### Optimization Opportunities
-- Implement Web Workers for heavy calculations
-- Add progressive calculation for large datasets
-- Implement virtual scrolling for indicator list
-
-## Testing Strategy
-
-### Unit Tests
-- Test calculation functions with known inputs/outputs
-- Test registry CRUD operations
-- Test cache invalidation logic
-
-### Integration Tests
-- Test indicator creation and rendering
-- Test persistence save/load cycles
-- Test settings updates and recalculation
-
-### E2E Tests
-- Test complete user workflows
-- Test browser compatibility
-- Test performance under load
-
-## Future Enhancements
-
-Potential improvements to consider:
-
-1. **Custom Indicator UI**: Allow indicators to provide custom React components
-2. **Indicator Templates**: Save and share indicator configurations
-3. **Composite Indicators**: Create indicators that combine multiple indicators
-4. **Real-time Collaboration**: Sync indicators across multiple users
-5. **Indicator Marketplace**: Community-contributed indicators
-6. **Performance Monitoring**: Track calculation times and optimize
-7. **Chart Templates**: Save entire chart configurations with indicators
-
-## Conclusion
-
-The indicator system provides a robust, extensible foundation for technical analysis. Its modular architecture makes it easy to add new indicators while maintaining type safety and performance.
+Unit tests (Vitest) sit beside the code: the calculator cache, the registry and built-in
+defaults, calculation utilities, swing points, sessions, overlay geometry, bars diffing,
+markers, legend data, and the hooks' pure helpers. Run them with `npm test`.
