@@ -205,12 +205,3 @@ export interface ChartTheme {
   /** Down volume bar. */
   volumeDownColor: string;
 }
-
-export interface IndicatorPanel {
-  id: string;
-  name: string;
-  type: 'line' | 'histogram' | 'area';
-  /** Resolved setting values (keyed by setting name). */
-  settings: Record<string, unknown>;
-  data: unknown[];
-}

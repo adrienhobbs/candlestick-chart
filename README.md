@@ -33,7 +33,8 @@ The package also imports under Node, so host unit tests and SSR can load it.
 ## Features
 
 **Chart**
-- Candles and volume, infinite scroll back through history (`onLoadMoreData`), bar selection
+- Candles and volume (its own pane or an overlay on the price pane), infinite scroll back
+  through history (`onLoadMoreData`), bar selection
   (clicked or controlled with `selectedBarTime`), crosshair OHLC legend, session shading and
   day separators, axis times in any IANA time zone, and a theme for the canvas and the dialogs.
 

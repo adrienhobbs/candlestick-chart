@@ -580,12 +580,12 @@ interface SettingField {
 
 `OHLCVBar`, `ChartLine`, `ChartMarker`, `ChartTrade`, `ChartSignpost`, `ChartRailMarker`,
 `PriceBand`, `ChartTheme`, `SessionsConfig`, `SessionDef` (plus the `US_EQUITY_PRESET`
-value), `OhlcLegendData`, `OhlcLegendIndicator`, `ContextMenuItem`, `LineChartSeries` and
-`LineChartProps` are documented in [ChartComponent Usage](./chart-component.md) and
-[Theming](./theming.md). The adapter types (`BarDataAdapter`, `BarDataAdapterOptions`,
-`HistoricalDataParams`, `RealtimeHandlers`, `RealtimeSubscription`) are in the
+value), `OhlcLegendData`, `OhlcLegendIndicator`, `ChartComponentProps`, `VolumeMode`,
+`ContextMenuItem`, `LineChartSeries` and `LineChartProps` are documented in
+[ChartComponent Usage](./chart-component.md) and [Theming](./theming.md). The adapter
+types (`BarDataAdapter`, `BarDataAdapterOptions`, `HistoricalDataParams`,
+`RealtimeHandlers`, `RealtimeSubscription`) are in the
 [Data Management Guide](./data-management.md#creating-custom-adapters).
-`IndicatorPanel` is still exported as a type but nothing in the library uses it.
 
 ---
 

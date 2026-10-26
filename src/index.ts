@@ -3,7 +3,7 @@
 
 // Components (all default exports in source → re-exported as named)
 export { default as ChartComponent } from './components/ChartComponent';
-export type { ContextMenuItem } from './components/ChartComponent';
+export type { ChartComponentProps, ContextMenuItem, VolumeMode } from './components/ChartComponent';
 export { default as IndicatorBrowser } from './components/IndicatorBrowser';
 export { default as IndicatorSettingsForm } from './components/IndicatorSettingsForm';
 export { default as SettingsDialog } from './components/SettingsDialog';
@@ -13,7 +13,7 @@ export type { LineChartSeries, LineChartProps } from './components/LineChart';
 export type { OhlcLegendData, OhlcLegendIndicator } from './components/ohlcLegendData';
 
 // Types
-export type { OHLCVBar, ChartLine, ChartMarker, ChartTrade, ChartSignpost, ChartRailMarker, PriceBand, ChartTheme, IndicatorPanel } from './types/chart';
+export type { OHLCVBar, ChartLine, ChartMarker, ChartTrade, ChartSignpost, ChartRailMarker, PriceBand, ChartTheme } from './types/chart';
 
 // Session shading (config + US-equity preset)
 export { US_EQUITY_PRESET } from './sessions/sessions';

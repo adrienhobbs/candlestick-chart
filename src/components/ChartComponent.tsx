@@ -4,7 +4,9 @@ import { IChartApi, IPriceLine, ISeriesApi, ISeriesMarkersPluginApi, Time } from
 import { OHLCVBar, ChartLine, ChartMarker, ChartRailMarker, ChartSignpost, ChartTrade, PriceBand, ChartTheme } from '../types/chart';
 import { DEFAULT_CHART_THEME, buildBaseChartLayoutOptions } from '../utils/chartTheme';
 import { IndicatorInstance } from '../indicators/core/types';
-import { MIN_VOLUME_PANE_HEIGHT, VOLUME_PANE_FRACTION } from './chart-constants';
+import { MIN_VOLUME_PANE_HEIGHT, VOLUME_OVERLAY_FRACTION, VOLUME_PANE_FRACTION } from './chart-constants';
+import { createLoadMoreGate, type LoadMoreGate } from './load-more-gate';
+import { RAIL_BOTTOM_GAP_PX, RAIL_HEIGHT_PX } from '../indicators/primitives/AnnotationsPrimitive';
 import { useChartLifecycle } from './chart-hooks/useChartLifecycle';
 import { useTradeFocus } from './chart-hooks/useTradeFocus';
 import { useBarsSync } from './chart-hooks/useBarsSync';
@@ -12,7 +14,7 @@ import { usePriceLines } from './chart-hooks/usePriceLines';
 import { usePriceBands } from './chart-hooks/usePriceBands';
 import { useIndicatorSeries } from './chart-hooks/useIndicatorSeries';
 import { useTradeMarkers } from './chart-hooks/useTradeMarkers';
-import { useAnnotations } from './chart-hooks/useAnnotations';
+import { useAnnotations, useKeepOutBox } from './chart-hooks/useAnnotations';
 import { useSpotlight } from './chart-hooks/useSpotlight';
 import { usePopupPosition } from './chart-hooks/usePopupPosition';
 import { useSessions } from './chart-hooks/useSessions';
@@ -41,10 +43,25 @@ const NO_BANDS: PriceBand[] = [];
 const NO_MARKERS: ChartMarker[] = [];
 const NO_SIGNPOSTS: ChartSignpost[] = [];
 const NO_RAIL: ChartRailMarker[] = [];
+/** Where the OHLC legend sits in the chart's top-left corner, px. */
+const LEGEND_OFFSET = { left: 8, top: 6 };
 
-interface ChartComponentProps {
+/**
+ * Where volume is drawn: `pane` is its own resizable pane under the price pane;
+ * `overlay` draws the bars along the bottom of the price pane on their own scale.
+ */
+export type VolumeMode = 'pane' | 'overlay';
+
+export interface ChartComponentProps {
   bars: OHLCVBar[];
-  onLoadMoreData?: (oldestTimestamp: number) => void;
+  /**
+   * Fired when the view reaches the oldest loaded bar, with that bar's timestamp
+   * (epoch ms); prepend older bars to `bars` in response. Return a promise to tell
+   * the chart when the load is done. Without one, the chart waits for older bars to
+   * arrive, or 10 s. A load that adds no older bars is not repeated until the view
+   * leaves the left edge and comes back. The latest callback is always used.
+   */
+  onLoadMoreData?: (oldestTimestamp: number) => void | Promise<unknown>;
   indicators?: IndicatorInstance[];
   lines?: ChartLine[];
   onDeleteLine?: (lineId: string) => void;
@@ -144,6 +161,8 @@ interface ChartComponentProps {
    * A partial override of {@link DEFAULT_CHART_THEME}; re-applied live on change.
    */
   theme?: Partial<ChartTheme>;
+  /** Draw volume in its own pane (default) or as an overlay on the price pane. */
+  volumeMode?: VolumeMode;
 }
 
 export default function ChartComponent({
@@ -175,6 +194,7 @@ export default function ChartComponent({
   renderOhlcLegend,
   onHoverBar,
   theme,
+  volumeMode = 'pane',
 }: ChartComponentProps) {
   // Merge the consumer's partial theme over the library default. `theme` should
   // be memoized by the caller; a stable identity keeps the live-apply effect from
@@ -188,6 +208,7 @@ export default function ChartComponent({
 
   // DOM + chart object refs.
   const chartContainerRef = useRef<HTMLDivElement>(null);
+  const legendRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const candlestickSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
   const volumeSeriesRef = useRef<ISeriesApi<'Histogram'> | null>(null);
@@ -202,9 +223,12 @@ export default function ChartComponent({
   const nextPaneIndexRef = useRef<number>(2);
   // Shared with the bars-sync hook + reset by the create-once teardown.
   const previousBarsRef = useRef<OHLCVBar[]>([]);
-  const previousBarsLengthRef = useRef<number>(0);
+  // Load-more state, shared by the range subscription (requests) and bars sync
+  // (older bars arriving ends a request).
+  const loadMoreGateRef = useRef<LoadMoreGate>(createLoadMoreGate());
+  const onLoadMoreDataRef = useRef(onLoadMoreData);
+  onLoadMoreDataRef.current = onLoadMoreData;
   // Live data refs read inside non-reactive closures.
-  const isLoadingRef = useRef(false);
   const barsRef = useRef<OHLCVBar[]>(bars);
   const selectedBarRef = useRef<OHLCVBar | null>(null);
   // Latest explicit height (px) or undefined for auto-fill; read inside the
@@ -238,16 +262,35 @@ export default function ChartComponent({
   // directly at render.)
   const lineEditEnabled = Boolean(onAddLine || onClearAllLines || contextMenuItems);
 
-  // Size the volume pane to a small fraction of the chart so price action stays
-  // dominant. Absolute px (this lightweight-charts build has no stretch factors),
-  // so it's re-applied whenever the chart height changes.
-  const sizeVolumePane = useCallback(() => {
+  const volumeModeRef = useRef<VolumeMode>(volumeMode);
+  volumeModeRef.current = volumeMode;
+  const hasRail = railMarkers.length > 0;
+  const hasRailRef = useRef(hasRail);
+  hasRailRef.current = hasRail;
+
+  // Keep volume small so price action stays dominant; re-applied whenever the
+  // chart height changes. As a pane: an absolute px height (this lightweight-charts
+  // build has no stretch factors). As an overlay: scale margins that pin the bars
+  // to the bottom of the price pane, lifted above the event rail when it shows.
+  const layoutVolume = useCallback(() => {
     const chart = chartRef.current;
-    if (!chart) return;
-    const panes = chart.panes();
-    if (panes.length < 2) return;
+    const vol = volumeSeriesRef.current;
+    if (!chart || !vol) return;
     const totalH = chartContainerRef.current?.clientHeight ?? 0;
-    if (totalH <= 0) return;
+    const overlay = volumeModeRef.current === 'overlay';
+    // On the price pane, a volume value label would sit among the prices.
+    vol.applyOptions({ lastValueVisible: !overlay, priceLineVisible: !overlay });
+    if (overlay) {
+      const paneH = chart.panes()[0]?.getHeight() || totalH;
+      const railPx = hasRailRef.current ? RAIL_HEIGHT_PX + RAIL_BOTTOM_GAP_PX * 2 : 0;
+      const bottom = paneH > 0 ? Math.min(0.25, railPx / paneH) : 0;
+      vol.priceScale().applyOptions({ scaleMargins: { top: 1 - VOLUME_OVERLAY_FRACTION - bottom, bottom } });
+      return;
+    }
+    // lightweight-charts' default margins for an overlay price scale.
+    vol.priceScale().applyOptions({ scaleMargins: { top: 0.2, bottom: 0.1 } });
+    const panes = chart.panes();
+    if (panes.length < 2 || totalH <= 0) return;
     panes[1].setHeight(Math.max(MIN_VOLUME_PANE_HEIGHT, Math.round(totalH * VOLUME_PANE_FRACTION)));
   }, []);
 
@@ -275,15 +318,14 @@ export default function ChartComponent({
     indicatorPaneIndexRef,
     nextPaneIndexRef,
     previousBarsRef,
-    previousBarsLengthRef,
-    isLoadingRef,
+    loadMoreGateRef,
+    onLoadMoreDataRef,
     barsRef,
     selectedBarRef,
     heightRef,
     themeRef,
     height,
     timeZone,
-    onLoadMoreData,
     enableBarSelection,
     barSelectionControlled,
     onBarClick,
@@ -292,7 +334,8 @@ export default function ChartComponent({
     linesRef,
     onLineMoveRef,
     onLineChangeRef,
-    sizeVolumePane,
+    volumeModeRef,
+    layoutVolume,
     setIsLoadingMore,
     setContextMenu,
     setSelectedBar,
@@ -311,9 +354,22 @@ export default function ChartComponent({
   useEffect(() => {
     if (chartRef.current && height !== undefined) {
       chartRef.current.applyOptions({ height });
-      sizeVolumePane();
+      layoutVolume();
     }
-  }, [height, sizeVolumePane]);
+  }, [height, layoutVolume]);
+
+  // [effect 4b] Move volume between its own pane and the price pane. Runs before
+  // the indicator setup effect, which rebuilds the indicator panes from
+  // `firstIndicatorPane` (moving volume out of pane 1 removes that pane, shifting
+  // every indicator pane up by one).
+  useEffect(() => {
+    const vol = volumeSeriesRef.current;
+    if (!vol) return;
+    const target = volumeMode === 'overlay' ? 0 : 1;
+    if (vol.getPane().paneIndex() !== target) vol.moveToPane(target);
+    layoutVolume();
+  }, [volumeMode, hasRail, layoutVolume]);
+  const firstIndicatorPane = volumeMode === 'overlay' ? 1 : 2;
 
   // [effect 5] Re-theme the existing chart live when `theme` changes (e.g. a host
   // app's dark/light toggle) — no recreate. Candle colors are series options;
@@ -348,9 +404,8 @@ export default function ChartComponent({
     candlestickSeriesRef,
     volumeSeriesRef,
     themeRef,
-    isLoadingRef,
+    loadMoreGateRef,
     previousBarsRef,
-    previousBarsLengthRef,
     setIsLoadingMore,
     bars,
   });
@@ -407,6 +462,7 @@ export default function ChartComponent({
     indicatorMarkersRef,
     indicatorPaneIndexRef,
     nextPaneIndexRef,
+    firstIndicatorPane,
     indicators,
     bars,
   });
@@ -424,7 +480,13 @@ export default function ChartComponent({
   });
 
   // [effect 13b] What series markers can't draw: ▶/◀ and hollow marks, price-style
-  // trade entries/exits, signposts, the event rail.
+  // trade entries/exits, signposts (kept clear of the OHLC legend), the event rail.
+  const legendShown = ohlcLegend != null;
+  const legendKeepOut = useKeepOutBox(
+    legendRef,
+    LEGEND_OFFSET,
+    `${legendShown}:${indicators.map((i) => i.id).join(',')}`,
+  );
   useAnnotations({
     candlestickSeriesRef,
     bars,
@@ -433,6 +495,7 @@ export default function ChartComponent({
     signposts,
     rail: railMarkers,
     resolvedTheme,
+    keepOut: legendKeepOut,
   });
 
   // [effect 14] Selected-bar spotlight overlay position.
@@ -495,7 +558,10 @@ export default function ChartComponent({
         <div ref={chartContainerRef} className={fill ? 'w-full h-full' : 'w-full'} />
 
         {ohlcLegend && (
-          <div style={{ position: 'absolute', top: 6, left: 8, zIndex: 6, pointerEvents: 'none' }}>
+          <div
+            ref={legendRef}
+            style={{ position: 'absolute', top: LEGEND_OFFSET.top, left: LEGEND_OFFSET.left, zIndex: 6, pointerEvents: 'none' }}
+          >
             {renderOhlcLegend ? (
               renderOhlcLegend(ohlcLegend)
             ) : (

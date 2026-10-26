@@ -11,13 +11,25 @@ Status legend: **▶ Next** · **◷ Deferred** · **○ Backlog**
 
 ## Unreleased
 
+- **`volumeMode: 'pane' | 'overlay'`.** Volume can sit along the bottom of the price pane
+  instead of in its own pane, lifted above the event rail when it shows. Switching it on a live
+  chart moves the series; separate-pane indicators shift up.
+- **Fix: load-more stopped for good** after a load that added no bars, and `onLoadMoreData` was
+  captured at chart creation. The latest callback is now used, a returned promise ends the load
+  (else older bars arriving, else 10 s), and an empty load is retried only after the view leaves
+  the left edge. A live bar appended on the right no longer ends a pending load.
+- **Fix: `useBarsData` `autoFetch` ran once per mount.** It now refetches when `symbol`,
+  `timeframe` or `limit` changes (clearing the old bars), and a superseded response is dropped.
+- **Fix: signpost pills could sit under the OHLC legend.** Pills under it drop to just below it.
+- **`ChartComponentProps` and `VolumeMode` are exported.** The unused `IndicatorPanel` type is
+  removed.
 - **Fix: time-bounded lines and boxes drew full-width** when bar timestamps weren't whole
   seconds (e.g. `MockAdapter`'s `Date.now()`-based bars). The overlay floored its seconds, so its
   ends matched no bar and clamped to the plot edges; it now converts them exactly as the bar
   series does.
 - **Demo** shows the 0.6–0.8 features: ▶/◀ trade marks, signposts, the event rail, a hollow
   counterfactual exit, focusing a trade, Swing Points at confirmation, a resizable chart that
-  fills its box, and a per-demo indicator key.
+  fills its box, a per-demo indicator key, and a pane/overlay volume toggle.
 
 ## ✅ Shipped (0.8.0)
 

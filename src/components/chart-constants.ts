@@ -5,6 +5,13 @@
 export const VOLUME_PANE_FRACTION = 0.14;
 /** Floor for the volume pane height in px, so it never collapses on short charts. */
 export const MIN_VOLUME_PANE_HEIGHT = 48;
+/** Share of the price pane the volume bars rise to when drawn as an overlay. */
+export const VOLUME_OVERLAY_FRACTION = 0.2;
+/**
+ * How long the chart waits for older bars after an `onLoadMoreData` call that
+ * returned no promise, before it gives up on that request (ms).
+ */
+export const LOAD_MORE_TIMEOUT_MS = 10_000;
 /** Pointer travel (px) past which a press is treated as a drag, not a click. */
 export const DRAG_THRESHOLD_PX = 5;
 /** Tolerance (s) for matching a click's time coordinate to a bar's timestamp. */

@@ -22,6 +22,7 @@ import type {
   ChartRailMarker,
   IndicatorInstance,
   LineChartSeries,
+  VolumeMode,
 } from './index';
 // NOTE: ChartAPIProvider / useChartAPIContext are NOT part of the public barrel
 // (`./index`), so they must still be imported from the context module directly.
@@ -48,6 +49,7 @@ function AppContent() {
   const [focusTradeId, setFocusTradeId] = useState<string | null>(null);
   const [markStyle, setMarkStyle] = useState<TradeMarkStyle>('price');
   const [showAnnotations, setShowAnnotations] = useState(true);
+  const [volumeMode, setVolumeMode] = useState<VolumeMode>('pane');
   const [symbol] = useState('AAPL');
   const [timeframe] = useState('5Min');
 
@@ -419,6 +421,13 @@ function AppContent() {
                 <button className={pill(showAnnotations)} onClick={() => setShowAnnotations((v) => !v)}>
                   Event rail
                 </button>
+                <span className="text-xs text-slate-500 ml-2">Volume</span>
+                <button className={pill(volumeMode === 'pane')} onClick={() => setVolumeMode('pane')}>
+                  Pane
+                </button>
+                <button className={pill(volumeMode === 'overlay')} onClick={() => setVolumeMode('overlay')}>
+                  Overlay
+                </button>
               </div>
             </div>
             {/* No `height` prop: the chart fills this resizable box. */}
@@ -474,6 +483,7 @@ function AppContent() {
                 timeZone="America/New_York"
                 sessions
                 showOhlcLegend
+                volumeMode={volumeMode}
               />
             </div>
           </div>

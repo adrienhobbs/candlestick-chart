@@ -58,8 +58,12 @@ export function useBarsData(options: UseBarsDataOptions = {}): UseBarsDataReturn
 
   const subscriptionRef = useRef<RealtimeSubscription | null>(null);
   const isMountedRef = useRef(true);
-  const hasInitialFetchRef = useRef(false);
+  // The symbol/timeframe/limit the last auto-fetch ran for (null = none yet).
+  const autoFetchKeyRef = useRef<string | null>(null);
   const isFetchingRef = useRef(false);
+  // Bumped by every full (non-`before`) fetch: a response from an older generation
+  // (e.g. the previous symbol's, still in flight) is dropped.
+  const fetchGenRef = useRef(0);
 
   // Debug logging gated behind the `debug` option (read via ref so the loggers
   // keep a stable identity and don't churn the useCallback dep arrays below).
@@ -111,12 +115,16 @@ export function useBarsData(options: UseBarsDataOptions = {}): UseBarsDataReturn
         return;
       }
 
-      if (isFetchingRef.current) {
+      // A full fetch supersedes whatever is in flight; a page of older bars waits
+      // its turn (the chart asks again once the current fetch lands).
+      if (params.before && isFetchingRef.current) {
         log('fetchHistorical: already fetching, skipping');
         return;
       }
 
       log('fetchHistorical called, params:', params, 'mounted:', isMountedRef.current);
+      const gen = params.before ? fetchGenRef.current : ++fetchGenRef.current;
+      const isCurrent = () => isMountedRef.current && gen === fetchGenRef.current;
       isFetchingRef.current = true;
       setLoading(true);
       setError(null);
@@ -134,7 +142,7 @@ export function useBarsData(options: UseBarsDataOptions = {}): UseBarsDataReturn
         const data = await adapter.fetchHistoricalBars(fetchParams);
         log('adapter.fetchHistoricalBars returned, data.length:', data.length);
 
-        if (isMountedRef.current) {
+        if (isCurrent()) {
           const validated = validateAndNormalizeBars(data);
 
           if (params.before) {
@@ -146,18 +154,18 @@ export function useBarsData(options: UseBarsDataOptions = {}): UseBarsDataReturn
             setBarsState(sorted);
           }
         } else {
-          log('Component unmounted, skipping data update');
+          log('Unmounted or superseded, skipping data update');
         }
       } catch (err) {
-        if (isMountedRef.current) {
+        if (isCurrent()) {
           const error = err instanceof Error ? err : new Error('Failed to fetch historical data');
           setError(error);
           console.error('Failed to fetch historical data:', error);
         }
       } finally {
-        isFetchingRef.current = false;
-        if (isMountedRef.current) {
-          setLoading(false);
+        if (gen === fetchGenRef.current) {
+          isFetchingRef.current = false;
+          if (isMountedRef.current) setLoading(false);
         }
       }
     },
@@ -217,14 +225,19 @@ export function useBarsData(options: UseBarsDataOptions = {}): UseBarsDataReturn
     await fetchHistorical();
   }, [fetchHistorical]);
 
+  // Auto-fetch on mount and again whenever symbol, timeframe or limit changes. The
+  // previous series is cleared first so it never shows under the new symbol.
+  // (A new adapter identity alone does not refetch; call `refetch`.)
   useEffect(() => {
-    log('useEffect[autoFetch] running, autoFetch:', autoFetch, 'adapter:', !!adapter, 'hasInitialFetch:', hasInitialFetchRef.current);
-    if (autoFetch && adapter && !hasInitialFetchRef.current) {
-      log('Calling fetchHistorical from useEffect (initial fetch)');
-      hasInitialFetchRef.current = true;
-      fetchHistorical();
-    }
-  }, [autoFetch, adapter, fetchHistorical, log]);
+    if (!autoFetch || !adapter) return;
+    const key = `${symbol}|${timeframe}|${limit}`;
+    if (autoFetchKeyRef.current === key) return;
+    const isChange = autoFetchKeyRef.current !== null;
+    autoFetchKeyRef.current = key;
+    log('auto-fetch for', key);
+    if (isChange) setBarsState([]);
+    fetchHistorical();
+  }, [autoFetch, adapter, symbol, timeframe, limit, fetchHistorical, log]);
 
   useEffect(() => {
     if (autoSubscribe && adapter?.subscribeRealtime) {

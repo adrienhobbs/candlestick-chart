@@ -2,14 +2,14 @@ import { useEffect, type Dispatch, type MutableRefObject, type SetStateAction } 
 import { CandlestickData, HistogramData, ISeriesApi, Time } from 'lightweight-charts';
 import { OHLCVBar, ChartTheme } from '../../types/chart';
 import { planBarsSync } from '../bars-sync-plan';
+import type { LoadMoreGate } from '../load-more-gate';
 
 interface UseBarsSyncArgs {
   candlestickSeriesRef: MutableRefObject<ISeriesApi<'Candlestick'> | null>;
   volumeSeriesRef: MutableRefObject<ISeriesApi<'Histogram'> | null>;
   themeRef: MutableRefObject<ChartTheme>;
-  isLoadingRef: MutableRefObject<boolean>;
+  loadMoreGateRef: MutableRefObject<LoadMoreGate>;
   previousBarsRef: MutableRefObject<OHLCVBar[]>;
-  previousBarsLengthRef: MutableRefObject<number>;
   setIsLoadingMore: Dispatch<SetStateAction<boolean>>;
   bars: OHLCVBar[];
 }
@@ -24,9 +24,8 @@ export function useBarsSync({
   candlestickSeriesRef,
   volumeSeriesRef,
   themeRef,
-  isLoadingRef,
+  loadMoreGateRef,
   previousBarsRef,
-  previousBarsLengthRef,
   setIsLoadingMore,
   bars,
 }: UseBarsSyncArgs) {
@@ -42,10 +41,7 @@ export function useBarsSync({
 
     const plan = planBarsSync(previousBarsRef.current, uniqueBars);
 
-    if (isLoadingRef.current && uniqueBars.length > previousBarsLengthRef.current) {
-      isLoadingRef.current = false;
-      setIsLoadingMore(false);
-    }
+    if (loadMoreGateRef.current.onBars(uniqueBars[0]?.timestamp)) setIsLoadingMore(false);
 
     if (plan === 'set') {
       const candleData: CandlestickData[] = uniqueBars.map((bar) => ({

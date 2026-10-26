@@ -227,7 +227,7 @@ const bars: OHLCVBar[] = [
 
 | Prop | Type | Default | Description |
 |------|------|---------|-------------|
-| `onLoadMoreData` | `(oldestTimestamp: number) => void` | - | Called when the user scrolls to within 5 bars of the oldest bar. See [Infinite Scroll](#infinite-scroll-load-more-data) |
+| `onLoadMoreData` | `(oldestTimestamp: number) => void \| Promise<unknown>` | - | Called when the user scrolls to within 5 bars of the oldest bar. Return a promise so the chart knows when the load ends. See [Infinite Scroll](#infinite-scroll-load-more-data) |
 | `indicators` | `IndicatorInstance[]` | `[]` | Indicator instances to display (usually from `useChartAPI`) |
 | `lines` | `ChartLine[]` | `[]` | Price lines to draw. See [Price Lines](#price-lines) |
 | `onDeleteLine` | `(lineId: string) => void` | - | Shows a delete button on each deletable line and fires when it is clicked |
@@ -254,6 +254,7 @@ const bars: OHLCVBar[] = [
 | `timeZone` | `string` | viewer local | IANA timezone for axis ticks + crosshair labels |
 | `height` | `number` | fill parent | Fixed chart height in px. Omit to fill the parent's height (tracked with a ResizeObserver); a parent with no definite height gets 600px |
 | `theme` | `Partial<ChartTheme>` | slate dark | Chart canvas colors — background, grid, axes, candles, volume. See [Theming](./theming.md) |
+| `volumeMode` | `'pane' \| 'overlay'` | `'pane'` | Volume in its own pane under the price pane, or as an overlay along the bottom of the price pane. See [Volume](#volume) |
 
 Array props default to stable module-level empty arrays, so omitting one does not re-run
 its effects on every render. Arrays you pass should be memoized for the same reason.
@@ -269,9 +270,19 @@ The infinite scroll feature automatically triggers when users pan back to view o
 1. User scrolls/pans to the left edge of the chart
 2. When the visible range comes within 5 bars of the oldest bar, `onLoadMoreData` is called
    with the oldest bar's timestamp
-3. The component shows a "Loading more data..." indicator and won't call again until `bars` grows
+3. The component shows a "Loading more data..." indicator and makes no other call while the
+   load is pending
 4. Your callback fetches and prepends older bars
 5. The chart applies the new bars and keeps the user's view
+
+A load ends when bars older than the requested timestamp arrive, or when the promise your
+callback returns settles (resolved or rejected). A callback that returns nothing gets 10
+seconds. A load that added no older bars (the start of the available history, or a failed
+request) is not repeated until the view leaves the left edge and comes back, so the chart
+never re-requests on every scroll event. A bar appended on the right does not end a load.
+
+The chart always calls the latest `onLoadMoreData`, so the callback can close over the
+current symbol or timeframe.
 
 #### Implementation
 
@@ -301,7 +312,7 @@ const handleLoadMore = async (oldestTimestamp: number) => {
 
 - Fetch 50-200 bars per request (balance between performance and UX)
 - Handle errors gracefully
-- The callback is captured when the chart is created; read changing values through refs (see [Loading Indicator Stuck](#loading-indicator-stuck))
+- Return (or `await` inside) the fetch's promise, so the indicator clears as soon as it ends
 - Cache fetched data to avoid redundant API calls
 
 ### Bar Selection
@@ -699,7 +710,9 @@ interface ChartRailMarker {   // railMarkers={...}
 ```
 
 - **Signposts** — a dashed vertical line at the bar with a label pill on the chart's
-  top edge. Pills that would overlap stack into a second (then third) row.
+  top edge. Pills that would overlap stack into a second (then third) row. With the
+  [OHLC legend](#crosshair-ohlc-legend) on, pills that would sit under it drop to just
+  below it instead.
 - **Event rail** — a 16 px strip along the bottom of the price pane, shown only when
   `railMarkers` is non-empty, for events that aren't a price (an excursion extreme's
   bar, a timer that would have fired). Marks sharing a bar sit side by side. The
@@ -797,15 +810,28 @@ Points' `plotAt: 'pivot' | 'confirmation'`), and [Creating Indicators](./creatin
 to build your own. To keep a user's indicators across reloads, see
 [Persistence Options](#persistence-options).
 
-### Volume Display
+### Volume
 
-Volume is automatically displayed as a histogram at the bottom of the main chart.
+Volume is always drawn, as a histogram. Bars are colored with the theme's `volumeUpColor`
+(close >= open) or `volumeDownColor` (close < open); the defaults are the candle colors at
+50% opacity.
 
-Bars are colored with the theme's `volumeUpColor` (close >= open) or `volumeDownColor`
-(close < open); the defaults are the candle colors at 50% opacity.
+`volumeMode` picks where it goes:
 
-Volume sits in its own pane below price, sized to a small fraction (~14%) of the
-chart height by default so price action dominates.
+- **`'pane'`** (default): its own pane below price, sized to about 14% of the chart height
+  (at least 48 px) so price action dominates. The pane can be resized by dragging its
+  separator, and its last value shows on its own axis.
+- **`'overlay'`**: along the bottom of the price pane, on a separate hidden scale, rising
+  to about 20% of the pane's height. Candles can draw over the bars, as on most trading
+  platforms. When the event rail shows, the bars sit just above it. No value label is
+  added to the price axis; the OHLC legend still shows the hovered bar's volume.
+
+```tsx
+<ChartComponent bars={bars} volumeMode="overlay" />
+```
+
+Switching `volumeMode` on a live chart moves the series without re-creating the chart.
+Separate-pane indicators move up to fill the volume pane's slot in overlay mode.
 
 ### Session shading + day separators
 
@@ -868,7 +894,7 @@ Most callbacks are covered with their feature above. Signatures, as declared on
 `ChartComponent`:
 
 ```typescript
-onLoadMoreData?: (oldestTimestamp: number) => void;   // ms timestamp of the oldest bar
+onLoadMoreData?: (oldestTimestamp: number) => void | Promise<unknown>; // ms timestamp of the oldest bar
 onBarClick?: (bar: OHLCVBar | null) => void;          // null = deselected (uncontrolled mode)
 onHoverBar?: (timeMs: number | null) => void;         // null = cursor left the bars
 onDeleteLine?: (lineId: string) => void;
@@ -1133,25 +1159,17 @@ Also check the indicator id is registered (`indicatorRegistry`) and its settings
 - In controlled mode (`selectedBarTime` passed, including `null`), clicks only fire
   `onBarClick`; you must update `selectedBarTime` from it, or the spotlight never moves.
 
-### Loading Indicator Stuck
+### Loading Indicator Lingers
 
-"Loading more data..." clears only when `bars` grows. If a call to `onLoadMoreData` adds no
-bars (for example, at the start of the available history, or after a failed request), the
-indicator stays and `onLoadMoreData` is not called again for the life of the chart.
+"Loading more data..." clears when older bars arrive or the callback's promise settles. If
+it stays for up to 10 seconds after a load that found nothing, the callback returned no
+promise: make it `async` and `await` the fetch, or return the fetch's promise.
 
-`onLoadMoreData` is also read once, when the chart is created: passing a different function
-(or `undefined`) later has no effect. Keep anything the callback needs in a ref rather than
-relying on the closure.
+### No More Loads at the Left Edge
 
-```typescript
-const symbolRef = useRef(symbol);
-symbolRef.current = symbol;
-
-const handleLoadMore = async (oldestTimestamp: number) => {
-  const olderBars = await fetchBarsBefore(symbolRef.current, oldestTimestamp);
-  setBars((prev) => [...olderBars, ...prev]);
-};
-```
+After a load that added no older bars, the chart waits for the view to leave the left edge
+and come back before asking again. Scroll right a little, then back. Bars must be prepended
+with timestamps older than the current oldest bar; bars at or after it do not count.
 
 ## TypeScript Types
 
@@ -1160,12 +1178,10 @@ The data types are shown with their features above: [`OHLCVBar`](#ohlcvbar-inter
 [`ChartMarker`](#markers), [`ChartSignpost` / `ChartRailMarker`](#signposts-and-the-event-rail),
 `PriceBand` ([time-bounded overlays](#time-bounded-overlays-segments--boxes)), and
 `ChartTheme` ([Theming](./theming.md)). All are exported from the package root, along with
-`ContextMenuItem`, `OhlcLegendData`, `OhlcLegendIndicator`, `SessionsConfig`, `SessionDef`,
+`ChartComponentProps`, `VolumeMode`, `ContextMenuItem`, `OhlcLegendData`, `OhlcLegendIndicator`, `SessionsConfig`, `SessionDef`,
 `LineChartSeries`, `LineChartProps`, `IndicatorInstance`, `PersistenceAdapter`, and the
 adapter types (`BarDataAdapter`, `HistoricalDataParams`, `RealtimeHandlers`, ...).
-
-`ChartComponentProps` itself is not exported; use `React.ComponentProps<typeof ChartComponent>`
-if you need it. The [Props Reference](#props-reference) lists every prop.
+The [Props Reference](#props-reference) lists every prop.
 
 ## Related Documentation
 

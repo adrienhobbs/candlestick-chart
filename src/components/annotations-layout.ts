@@ -29,6 +29,43 @@ export function layoutPillRows(pills: PillBox[], gap = 4, maxRows = 3): number[]
   return rows;
 }
 
+/** A box in the pane's top-left corner that pills must not cover (the OHLC legend). */
+export interface KeepOut {
+  /** Right edge, media px from the pane's left. */
+  right: number;
+  /** Bottom edge, media px from the pane's top. */
+  bottom: number;
+}
+
+export interface PillMetrics {
+  /** Top of the first row, media px. */
+  top: number;
+  height: number;
+  rowGap: number;
+  /** Pills are clamped this far inside the pane's left edge when drawn. */
+  inset: number;
+}
+
+/**
+ * Top (media px) of each signpost pill. Pills that would sit under `keepOut` get
+ * their own rows, starting just below it; the rest start at the pane's top edge.
+ */
+export function layoutPillTops(pills: PillBox[], keepOut: KeepOut | null, m: PillMetrics): number[] {
+  const blocked = (p: PillBox) =>
+    keepOut != null && Math.max(p.x - p.width / 2, m.inset) < keepOut.right;
+  const tops = new Array<number>(pills.length).fill(m.top);
+  for (const underLegend of [false, true]) {
+    const idxs = pills.map((_, i) => i).filter((i) => blocked(pills[i]) === underLegend);
+    if (idxs.length === 0) continue;
+    const base = underLegend && keepOut ? Math.max(m.top, keepOut.bottom + m.rowGap) : m.top;
+    const rows = layoutPillRows(idxs.map((i) => pills[i]));
+    idxs.forEach((i, k) => {
+      tops[i] = base + rows[k] * (m.height + m.rowGap);
+    });
+  }
+  return tops;
+}
+
 /**
  * Horizontal offsets for marks that share a bar, centred on it: n marks `step` px apart.
  * Keyed by the bar time each mark snapped to; returns an offset per input.

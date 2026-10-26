@@ -56,6 +56,8 @@ interface UseIndicatorSeriesArgs {
   indicatorMarkersRef: MutableRefObject<Map<string, ISeriesMarkersPluginApi<Time>>>;
   indicatorPaneIndexRef: MutableRefObject<Map<string, number>>;
   nextPaneIndexRef: MutableRefObject<number>;
+  /** Pane index of the first non-overlay indicator: 2 below a volume pane, else 1. */
+  firstIndicatorPane: number;
   indicators: IndicatorInstance[];
   bars: OHLCVBar[];
 }
@@ -75,6 +77,7 @@ export function useIndicatorSeries({
   indicatorMarkersRef,
   indicatorPaneIndexRef,
   nextPaneIndexRef,
+  firstIndicatorPane,
   indicators,
   bars,
 }: UseIndicatorSeriesArgs) {
@@ -94,7 +97,7 @@ export function useIndicatorSeries({
     });
     indicatorMarkersRef.current.clear();
     indicatorPaneIndexRef.current.clear();
-    nextPaneIndexRef.current = 2;
+    nextPaneIndexRef.current = firstIndicatorPane;
 
     indicators.forEach((indicator) => {
       const definition = indicatorRegistry.get(indicator.definitionId);
@@ -231,7 +234,7 @@ export function useIndicatorSeries({
       }
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [indicators]);
+  }, [indicators, firstIndicatorPane]);
 
   useEffect(() => {
     if (!chartRef.current || indicators.length === 0) return;

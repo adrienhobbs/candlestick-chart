@@ -171,7 +171,7 @@ interface UseBarsDataOptions {
   adapter?: BarDataAdapter;
   symbol?: string;           // default 'AAPL'
   timeframe?: string;        // default '5Min' (passed through to the adapter)
-  autoFetch?: boolean;       // default false: fetch once when an adapter is present
+  autoFetch?: boolean;       // default false: fetch on mount and when symbol/timeframe/limit change
   autoSubscribe?: boolean;   // default false: subscribe while an adapter supports it
   limit?: number;            // default 500
   debug?: boolean;           // default false: log fetch/subscribe traces
@@ -180,11 +180,12 @@ interface UseBarsDataOptions {
 
 Behavior to know about:
 
-- **`autoFetch` fetches once per mount.** Changing `symbol` or `timeframe` afterwards does
-  not refetch on its own; call `refetch()` (or `fetchHistorical()`) in an effect, or
-  remount the component with a `key`.
-- **`fetchHistorical` with `before`** prepends the result to the existing bars. Without
-  `before` it replaces them. A call made while another is in flight is skipped.
+- **`autoFetch` follows the series.** It fetches on mount and again whenever `symbol`,
+  `timeframe` or `limit` changes, clearing the old bars first so they never show under
+  the new symbol. A new `adapter` object alone does not refetch; call `refetch()`.
+- **`fetchHistorical` with `before`** prepends the result to the existing bars, and is
+  skipped while another fetch is in flight. Without `before` it replaces the bars and
+  supersedes any fetch in flight: a late response for the previous symbol is dropped.
 - **Missing adapter.** `fetchHistorical` sets `error` to `No adapter provided`.
 - **Real-time handlers.** `onBar` calls `appendBar` and `onTrade` calls
   `updateCurrentBar`. `appendBar` ignores a bar whose timestamp is already present, so an
@@ -207,18 +208,15 @@ const { bars, loading } = useBarsData({
 });
 ```
 
-#### Refetch when the symbol changes
+#### Switching symbols
 
 ```typescript
-const { bars, refetch } = useBarsData({ adapter, symbol, timeframe });
-
-useEffect(() => {
-  refetch();
-}, [symbol, timeframe, refetch]);
+const [symbol, setSymbol] = useState('AAPL');
+const { bars, loading } = useBarsData({ adapter, symbol, timeframe: '5Min', autoFetch: true });
+// setSymbol('MSFT') clears the AAPL bars and fetches MSFT.
 ```
 
-`refetch` changes identity when `symbol`, `timeframe`, `limit` or `adapter` change, so
-this effect runs once on mount and once per change.
+Without `autoFetch`, call `refetch()` in an effect keyed on `symbol` and `timeframe`.
 
 #### Manual live control
 
@@ -387,8 +385,9 @@ function HistoricalChart() {
 }
 ```
 
-`onLoadMoreData` fires again only after `bars` grows, so if the server has no older bars,
-the chart stops asking.
+Because `loadMoreBars` is `async`, the chart knows when each load ends. If the server has
+no older bars, the chart does not ask again until the view leaves the left edge and
+comes back.
 
 ### Recipe 2: REST plus a WebSocket of trades
 

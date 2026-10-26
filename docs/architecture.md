@@ -132,8 +132,14 @@ to lightweight-charts without re-rendering React.
   (first load, prepended history, a different symbol), `none` when nothing changed. All
   bars but the last are compared, because two symbols over the same window share
   timestamps.
-- **Load more.** When the visible logical range starts within 5 bars of the left edge,
-  `onLoadMoreData(oldestTimestamp)` fires once; it re-arms after `bars` grows.
+- **Load more.** `load-more-gate.ts` decides. When the visible logical range starts within
+  5 bars of the left edge, the latest `onLoadMoreData(oldestTimestamp)` fires once. The
+  request ends when bars older than that timestamp arrive, when the returned promise
+  settles, or after 10 s for a callback that returns nothing. It re-arms when older bars
+  arrive or the view leaves the edge, so an empty load is not repeated on every scroll.
+- **Volume placement.** `volumeMode` moves the volume series between pane 1 and the price
+  pane (`moveToPane`, no re-create). In overlay mode its scale margins pin it to the
+  bottom of the price pane, above the event rail when that shows.
 - **Sizing.** With `height` set the chart is that tall; without it the chart follows its
   container's height.
 - **Primitives.** Drawing that series cannot do is done by series primitives attached to
@@ -214,7 +220,7 @@ backend is a custom object implementing the interface.
 
 ### Rendering (`components/chart-hooks/useIndicatorSeries.ts`)
 
-When the `indicators` prop changes, every indicator series is removed and rebuilt; when
+When the `indicators` prop or `volumeMode` changes, every indicator series is removed and rebuilt; when
 `bars` changes, the existing series are re-fed. Per definition:
 
 | renderConfig | Rendered as |
@@ -227,7 +233,7 @@ When the `indicators` prop changes, every indicator series is removed and rebuil
 | `POINTS` | Series markers on the candlestick series, one markers plugin per drawn field |
 
 `overlay: false` puts the indicator in its own pane below the volume pane (pane index 2
-and up); POINTS always draw on the price pane. Colors come from instance settings
+and up, or 1 and up with `volumeMode: 'overlay'`); POINTS always draw on the price pane. Colors come from instance settings
 (`color`, `<field>Color`, `upperColor`/`middleColor`/`lowerColor`, `fillColor`), falling
 back to a shared palette.
 

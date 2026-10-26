@@ -16,8 +16,16 @@ import {
   BAR_CLICK_TIME_TOLERANCE_SEC,
   DRAG_THRESHOLD_PX,
   LINE_HIT_THRESHOLD_PX,
+  LOAD_MORE_TIMEOUT_MS,
   MIN_SPOTLIGHT_WIDTH,
 } from '../chart-constants';
+import { createLoadMoreGate, type LoadMoreGate } from '../load-more-gate';
+
+function oldestTimestampOf(bars: OHLCVBar[]): number | undefined {
+  let oldest: number | undefined;
+  for (const bar of bars) if (oldest === undefined || bar.timestamp < oldest) oldest = bar.timestamp;
+  return oldest;
+}
 import type { IPriceLine } from 'lightweight-charts';
 
 interface UseChartLifecycleArgs {
@@ -33,9 +41,9 @@ interface UseChartLifecycleArgs {
   indicatorPaneIndexRef: MutableRefObject<Map<string, number>>;
   nextPaneIndexRef: MutableRefObject<number>;
   previousBarsRef: MutableRefObject<OHLCVBar[]>;
-  previousBarsLengthRef: MutableRefObject<number>;
   // Live data refs read inside the create-once closures.
-  isLoadingRef: MutableRefObject<boolean>;
+  loadMoreGateRef: MutableRefObject<LoadMoreGate>;
+  onLoadMoreDataRef: MutableRefObject<((oldestTimestamp: number) => void | Promise<unknown>) | undefined>;
   barsRef: MutableRefObject<OHLCVBar[]>;
   selectedBarRef: MutableRefObject<OHLCVBar | null>;
   heightRef: MutableRefObject<number | undefined>;
@@ -43,7 +51,6 @@ interface UseChartLifecycleArgs {
   // Create-time prop values (captured on mount, matching the original [] effect).
   height?: number;
   timeZone?: string;
-  onLoadMoreData?: (oldestTimestamp: number) => void;
   enableBarSelection: boolean;
   barSelectionControlled: boolean;
   onBarClick?: (bar: OHLCVBar | null) => void;
@@ -56,8 +63,10 @@ interface UseChartLifecycleArgs {
   linesRef: MutableRefObject<ChartLine[]>;
   onLineMoveRef: MutableRefObject<((id: string, price: number) => void) | undefined>;
   onLineChangeRef: MutableRefObject<((line: ChartLine) => void) | undefined>;
-  // Volume pane sizing (shared with the height-apply effect).
-  sizeVolumePane: () => void;
+  // Volume placement at create time, and its sizing (shared with the height-apply
+  // and volume-mode effects).
+  volumeModeRef: MutableRefObject<'pane' | 'overlay'>;
+  layoutVolume: () => void;
   // State setters.
   setIsLoadingMore: Dispatch<SetStateAction<boolean>>;
   setContextMenu: Dispatch<SetStateAction<{ x: number; y: number; price: number } | null>>;
@@ -90,15 +99,14 @@ export function useChartLifecycle({
   indicatorPaneIndexRef,
   nextPaneIndexRef,
   previousBarsRef,
-  previousBarsLengthRef,
-  isLoadingRef,
+  loadMoreGateRef,
+  onLoadMoreDataRef,
   barsRef,
   selectedBarRef,
   heightRef,
   themeRef,
   height,
   timeZone,
-  onLoadMoreData,
   enableBarSelection,
   barSelectionControlled,
   onBarClick,
@@ -107,7 +115,8 @@ export function useChartLifecycle({
   linesRef,
   onLineMoveRef,
   onLineChangeRef,
-  sizeVolumePane,
+  volumeModeRef,
+  layoutVolume,
   setIsLoadingMore,
   setContextMenu,
   setSelectedBar,
@@ -179,27 +188,45 @@ export function useChartLifecycle({
         type: 'volume',
       },
       priceScaleId: '',
-    }, 1);
+    }, volumeModeRef.current === 'overlay' ? 0 : 1);
 
     chartRef.current = chart;
     candlestickSeriesRef.current = candlestickSeries;
     volumeSeriesRef.current = volumeSeries;
 
-    // Shrink the volume pane by default — price action should dominate.
-    sizeVolumePane();
+    // Shrink volume by default — price action should dominate.
+    layoutVolume();
 
     seriesMarkersRef.current = createSeriesMarkers(candlestickSeries, []);
 
+    // Bumped per request, so a stale timeout can't settle a later request.
+    let loadMoreSeq = 0;
+    let loadMoreTimer: ReturnType<typeof setTimeout> | null = null;
     chart.timeScale().subscribeVisibleLogicalRangeChange((logicalRange) => {
-      if (logicalRange && logicalRange.from < 5 && !isLoadingRef.current && onLoadMoreData) {
-        isLoadingRef.current = true;
-        setIsLoadingMore(true);
-        previousBarsLengthRef.current = barsRef.current.length;
-        const sortedBars = [...barsRef.current].sort((a, b) => a.timestamp - b.timestamp);
-        const oldestTimestamp = sortedBars[0]?.timestamp;
-        if (oldestTimestamp) {
-          onLoadMoreData(oldestTimestamp);
-        }
+      const load = onLoadMoreDataRef.current;
+      if (!logicalRange || !load) return;
+      const gate = loadMoreGateRef.current;
+      const requested = gate.onRange(logicalRange.from, oldestTimestampOf(barsRef.current));
+      if (requested == null) return;
+      setIsLoadingMore(true);
+      const seq = ++loadMoreSeq;
+      const settle = () => {
+        if (seq !== loadMoreSeq) return;
+        if (loadMoreTimer) clearTimeout(loadMoreTimer);
+        loadMoreTimer = null;
+        if (loadMoreGateRef.current === gate && gate.onSettled()) setIsLoadingMore(false);
+      };
+      let result: void | Promise<unknown>;
+      try {
+        result = load(requested);
+      } catch (err) {
+        settle();
+        throw err;
+      }
+      if (result && typeof (result as Promise<unknown>).then === 'function') {
+        (result as Promise<unknown>).then(settle, settle);
+      } else {
+        loadMoreTimer = setTimeout(settle, LOAD_MORE_TIMEOUT_MS);
       }
     });
 
@@ -213,8 +240,8 @@ export function useChartLifecycle({
           ...(heightRef.current === undefined && nextHeight > 0 ? { height: nextHeight } : {}),
           ...(heightRef.current !== undefined ? { height: heightRef.current } : {}),
         });
-        // The volume pane is sized in px; keep it a fraction of the new height.
-        sizeVolumePane();
+        // Volume is sized in px; keep it a fraction of the new height.
+        layoutVolume();
       }
     };
 
@@ -446,6 +473,10 @@ export function useChartLifecycle({
       // about to be removed, but reset the drag state for safety.
       lineDragRef.current = null;
       suppressClickRef.current = false;
+      if (loadMoreTimer) clearTimeout(loadMoreTimer);
+      loadMoreSeq++;
+      loadMoreGateRef.current = createLoadMoreGate();
+      setIsLoadingMore(false);
       chart.remove();
       // `chart.remove()` disposes every series this chart owned. Drop the stale
       // series references too — otherwise a remount (e.g. React StrictMode's
@@ -463,7 +494,6 @@ export function useChartLifecycle({
       // only one candle (price scale collapses; candles look missing). Clearing
       // forces a full setData on the new series. (Bites StrictMode's double mount.)
       previousBarsRef.current = [];
-      previousBarsLengthRef.current = 0;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

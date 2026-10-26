@@ -8,7 +8,7 @@ import {
 } from 'lightweight-charts';
 import type { ChartMarker, ChartRailMarker, ChartSignpost, OHLCVBar } from '../../types/chart';
 import { fadeHex, snapDown } from '../../components/trade-markers';
-import { layoutPillRows, spreadSameBar } from '../../components/annotations-layout';
+import { layoutPillTops, spreadSameBar, type KeepOut } from '../../components/annotations-layout';
 
 // What lightweight-charts' series markers can't draw, as one custom primitive on the
 // candlestick series:
@@ -26,10 +26,11 @@ export interface AnnotationsData {
 
 /** Rail strip height and its gap above the pane's bottom edge, media px. */
 export const RAIL_HEIGHT_PX = 16;
-const RAIL_BOTTOM_GAP_PX = 2;
+export const RAIL_BOTTOM_GAP_PX = 2;
 const PILL_HEIGHT_PX = 16;
 const PILL_ROW_GAP_PX = 3;
 const PILL_TOP_PX = 4;
+const PILL_INSET_PX = 2;
 const PILL_FONT = '600 10px ui-monospace, SFMono-Regular, Menlo, monospace';
 const RAIL_FONT = '600 9px ui-monospace, SFMono-Regular, Menlo, monospace';
 /** Base marker half-size in px at `size: 1` (lightweight-charts' default marker is ~similar). */
@@ -59,7 +60,8 @@ interface FrameMark {
 }
 interface FramePill {
   x: number;
-  row: number;
+  /** Top edge, media px. */
+  top: number;
   width: number;
   label: string;
   color: string;
@@ -151,8 +153,13 @@ class AnnotationsPaneView {
       if (x === null) continue;
       pillInputs.push({ x, width: textWidth(s.label, PILL_FONT) + 12, label: s.label, color: s.color });
     }
-    const rows = layoutPillRows(pillInputs);
-    const pills = pillInputs.map((p, i) => ({ ...p, row: rows[i] }));
+    const tops = layoutPillTops(pillInputs, this.source._keepOut, {
+      top: PILL_TOP_PX,
+      height: PILL_HEIGHT_PX,
+      rowGap: PILL_ROW_GAP_PX,
+      inset: PILL_INSET_PX,
+    });
+    const pills = pillInputs.map((p, i) => ({ ...p, top: tops[i] }));
 
     const railMarks: FrameRail[] = [];
     const railX: number[] = [];
@@ -271,7 +278,7 @@ class AnnotationsRenderer implements IPrimitivePaneRenderer {
         ctx.setLineDash([3, 3]);
         ctx.beginPath();
         const x = Math.round(p.x) + 0.5;
-        ctx.moveTo(x, PILL_TOP_PX + PILL_HEIGHT_PX);
+        ctx.moveTo(x, p.top + PILL_HEIGHT_PX);
         ctx.lineTo(x, f.hasRail ? h - RAIL_HEIGHT_PX - RAIL_BOTTOM_GAP_PX : h);
         ctx.stroke();
       }
@@ -287,8 +294,8 @@ class AnnotationsRenderer implements IPrimitivePaneRenderer {
       ctx.textBaseline = 'middle';
       ctx.textAlign = 'center';
       for (const p of f.pills) {
-        const left = Math.min(Math.max(p.x - p.width / 2, 2), w - p.width - 2);
-        const top = PILL_TOP_PX + p.row * (PILL_HEIGHT_PX + PILL_ROW_GAP_PX);
+        const left = Math.min(Math.max(p.x - p.width / 2, PILL_INSET_PX), w - p.width - PILL_INSET_PX);
+        const top = p.top;
         const r = PILL_HEIGHT_PX / 2;
         ctx.beginPath();
         ctx.moveTo(left + r, top);
@@ -331,6 +338,8 @@ export class AnnotationsPrimitive implements ISeriesPrimitive<Time> {
   _signposts: SnappedSignpost[] = [];
   _rail: SnappedRail[] = [];
   _railBackground = 'rgba(148, 163, 184, 0.08)';
+  /** Top-left box the signpost pills stay out of (the OHLC legend), or null. */
+  _keepOut: KeepOut | null = null;
   private _requestUpdate: (() => void) | null = null;
   private readonly _paneViews = [new AnnotationsPaneView(this)];
   /** Bar high/low by time (seconds), for marks placed above/below a bar. */
@@ -374,6 +383,11 @@ export class AnnotationsPrimitive implements ISeriesPrimitive<Time> {
     const offsets = spreadSameBar(rail.map((x) => x.barSec), 10);
     this._rail = rail.map((x, i) => ({ ...x, offset: offsets[i] }));
     if (railBackground) this._railBackground = railBackground;
+    this._requestUpdate?.();
+  }
+
+  setKeepOut(keepOut: KeepOut | null): void {
+    this._keepOut = keepOut;
     this._requestUpdate?.();
   }
 
