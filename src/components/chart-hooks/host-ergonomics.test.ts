@@ -64,6 +64,16 @@ describe('snapSpan / buildTradeOverlaysConfig', () => {
     expect(config.boxes.map((b) => b.id)).toEqual(['box']);
     expect(config.boxes[0]).toMatchObject({ startSec: (T0 + MIN5) / 1000, endSec: (T0 + 2 * MIN5) / 1000 });
   });
+
+  it('keeps sub-second bar times exact, matching the series time of the bar', () => {
+    const odd = series(5).map((b) => ({ ...b, timestamp: b.timestamp + 437 }));
+    const config = buildTradeOverlaysConfig(
+      [{ id: 'entry', price: 1, color: '#fff', startTime: odd[1].timestamp, endTime: odd[3].timestamp }],
+      [],
+      ascendingBarTimes(odd),
+    );
+    expect(config.segments[0]).toMatchObject({ startSec: odd[1].timestamp / 1000, endSec: odd[3].timestamp / 1000 });
+  });
 });
 
 describe('dialog Escape', () => {

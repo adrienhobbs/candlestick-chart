@@ -17,7 +17,9 @@ export function ascendingBarTimes(bars: OHLCVBar[]): number[] {
 /**
  * Bounded lines/bands → the primitive's config, each span snapped onto the bars
  * (the primitive can only place a real bar time). A span ending before the first
- * bar is dropped.
+ * bar is dropped. Seconds are converted exactly as the bar series converts them
+ * (no flooring): a bar time that isn't a whole second would otherwise match no bar
+ * and clamp to the plot edges.
  */
 export function buildTradeOverlaysConfig(
   lines: ChartLine[],
@@ -31,8 +33,8 @@ export function buildTradeOverlaysConfig(
     segments.push({
       id: l.id,
       price: l.price,
-      startSec: Math.floor(span.start / 1000),
-      endSec: Math.floor(span.end / 1000),
+      startSec: span.start / 1000,
+      endSec: span.end / 1000,
       color: l.color,
       lineWidth: l.lineWidth ?? 2,
       lineStyle: l.lineStyle ?? 'solid',
@@ -47,8 +49,8 @@ export function buildTradeOverlaysConfig(
       id: b.id,
       top: b.top,
       bottom: b.bottom,
-      startSec: Math.floor(span.start / 1000),
-      endSec: Math.floor(span.end / 1000),
+      startSec: span.start / 1000,
+      endSec: span.end / 1000,
       color: b.color,
       topLabel: b.topLabel,
       bottomLabel: b.bottomLabel,
