@@ -9,6 +9,11 @@ Status legend: **▶ Next** · **◷ Deferred** · **○ Backlog**
 
 ---
 
+## ✅ Shipped (0.9.1)
+
+- **Fix: overlay volume drew over the candles.** In `volumeMode: 'overlay'` the volume series
+  now draws first in the price pane, so candles sit on top of it.
+
 ## ✅ Shipped (0.9.0)
 
 - **`volumeMode: 'pane' | 'overlay'`.** Volume can sit along the bottom of the price pane
