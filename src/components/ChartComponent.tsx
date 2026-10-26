@@ -281,6 +281,8 @@ export default function ChartComponent({
     // On the price pane, a volume value label would sit among the prices.
     vol.applyOptions({ lastValueVisible: !overlay, priceLineVisible: !overlay });
     if (overlay) {
+      // Series draw in pane order; put volume first so the candles draw over it.
+      if (vol.seriesOrder() !== 0) vol.setSeriesOrder(0);
       const paneH = chart.panes()[0]?.getHeight() || totalH;
       const railPx = hasRailRef.current ? RAIL_HEIGHT_PX + RAIL_BOTTOM_GAP_PX * 2 : 0;
       const bottom = paneH > 0 ? Math.min(0.25, railPx / paneH) : 0;
