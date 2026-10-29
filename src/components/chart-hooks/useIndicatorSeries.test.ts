@@ -148,4 +148,19 @@ describe('useIndicatorSeries — POINTS', () => {
       [420, 'belowBar', 'square', '#abc'],
     ]);
   });
+
+  it('skips a disabled instance: nothing drawn, nothing calculated', () => {
+    const spy = vi.spyOn(indicatorCalculator, 'calculate');
+    const { refs, hook } = setup();
+    spy.mockClear();
+
+    hook.rerender({ indicators: [{ ...swing, enabled: false }] });
+
+    expect(refs.indicatorMarkersRef.current.size).toBe(0);
+    expect(spy).not.toHaveBeenCalled();
+
+    hook.rerender({ indicators: [{ ...swing, enabled: true }] });
+    expect([...refs.indicatorMarkersRef.current.keys()]).toEqual(['swingpoints-1:high', 'swingpoints-1:low']);
+    spy.mockRestore();
+  });
 });

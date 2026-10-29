@@ -1,4 +1,4 @@
-import { useEffect, type MutableRefObject } from 'react';
+import { useEffect, useMemo, type MutableRefObject } from 'react';
 import {
   AreaSeries,
   createSeriesMarkers,
@@ -78,9 +78,12 @@ export function useIndicatorSeries({
   indicatorPaneIndexRef,
   nextPaneIndexRef,
   firstIndicatorPane,
-  indicators,
+  indicators: allIndicators,
   bars,
 }: UseIndicatorSeriesArgs) {
+  // Disabled instances are neither calculated nor drawn, so they cost nothing on live bar updates.
+  const indicators = useMemo(() => allIndicators.filter((i) => i.enabled !== false), [allIndicators]);
+
   useEffect(() => {
     if (!chartRef.current) return;
 
