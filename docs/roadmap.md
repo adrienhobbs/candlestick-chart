@@ -9,6 +9,12 @@ Status legend: **▶ Next** · **◷ Deferred** · **○ Backlog**
 
 ---
 
+## ✅ Shipped (0.9.2)
+
+- **Indicator on/off toggle.** `IndicatorInstance.enabled?: boolean` (absent = enabled, so
+  saved sets load unchanged) and `useChartAPI().toggleIndicator(id)`. A disabled indicator
+  stays in the list and in persistence but is not calculated or drawn.
+
 ## ✅ Shipped (0.9.1)
 
 - **Fix: overlay volume drew over the candles.** In `volumeMode: 'overlay'` the volume series

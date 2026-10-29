@@ -1,6 +1,6 @@
 # API Reference
 
-Reference for the public API of `@adrienhobbs/candlekit` (0.9.1). Everything below is a
+Reference for the public API of `@adrienhobbs/candlekit` (0.9.2). Everything below is a
 named export of the package root unless stated otherwise.
 
 ```bash
@@ -192,7 +192,7 @@ interface PersistenceAdapter {
 ```
 
 - `saveIndicators` receives the full current list. `useChartAPI` calls it after every
-  change (add, remove, settings update), once loading has finished.
+  change (add, remove, settings update, toggle), once loading has finished.
 - `loadIndicators` is called by `useChartAPI` on mount and when the adapter changes.
 - `deleteIndicator` is part of the interface for direct use; `useChartAPI` does not call
   it (removal is persisted through `saveIndicators`).
@@ -243,6 +243,7 @@ interface UseChartAPIOptions {
   addIndicator: (definitionId: string, customSettings?: Record<string, any>) => IndicatorInstance;
   removeIndicator: (id: string) => void;
   updateIndicatorSettings: (id: string, settings: Record<string, any>) => void; // replaces the settings object
+  toggleIndicator: (id: string) => void; // flips `enabled`; a disabled instance is kept and persisted but not calculated or drawn
 
   // Price lines
   lines: ChartLine[];
