@@ -125,6 +125,8 @@ export interface IndicatorInstance {
   definitionId: string;
   name: string;
   settings: Record<string, any>;
+  /** Absent means enabled: sets saved before the toggle feature carry no flag. */
+  enabled?: boolean;
   data?: IndicatorOutput[];
 }
 
@@ -133,4 +135,5 @@ export const IndicatorInstanceSchema = z.object({
   definitionId: z.string(),
   name: z.string(),
   settings: z.record(z.string(), z.any()),
+  enabled: z.boolean().optional(),
 });
