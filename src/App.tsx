@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback } from 'react';
-import { TrendingUp, Settings, Plus, Trash2, RefreshCw, Crosshair } from 'lucide-react';
+import { TrendingUp, Settings, Plus, Trash2, RefreshCw, Crosshair, Eye, EyeOff } from 'lucide-react';
 // Dogfood the public package surface: the dev harness imports candlekit from its
 // published barrel (`./index`) rather than deep relative paths.
 import {
@@ -79,6 +79,7 @@ function AppContent() {
     addIndicator,
     removeIndicator,
     updateIndicatorSettings,
+    toggleIndicator,
   } = useChartAPIContext();
 
   // Hovered trade (from the chart's onHoverBar) → preview its bounded overlays.
@@ -577,10 +578,18 @@ function AppContent() {
               {indicators.map((indicator) => (
                 <div
                   key={indicator.id}
-                  className="flex items-center justify-between p-3 bg-slate-700 rounded-lg"
+                  className={`flex items-center justify-between p-3 bg-slate-700 rounded-lg${indicator.enabled === false ? ' opacity-50' : ''}`}
                 >
                   <span className="text-slate-200 text-sm">{indicator.name}</span>
                   <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => toggleIndicator(indicator.id)}
+                      className="text-slate-400 hover:text-slate-200 transition"
+                      aria-label={`${indicator.enabled === false ? 'Show' : 'Hide'} ${indicator.name}`}
+                      aria-pressed={indicator.enabled === false}
+                    >
+                      {indicator.enabled === false ? <EyeOff size={18} /> : <Eye size={18} />}
+                    </button>
                     <button
                       onClick={() => {
                         setSelectedIndicator(indicator);
