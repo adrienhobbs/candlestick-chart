@@ -169,6 +169,16 @@ export function useChartAPI(options?: UseChartAPIOptions) {
     []
   );
 
+  const toggleIndicator = useCallback((id: string) => {
+    // undefined -> false -> true. The calculator cache is kept so re-enabling
+    // redraws from cached data when the bars have not moved.
+    setIndicators((prev) =>
+      prev.map((indicator) =>
+        indicator.id === id ? { ...indicator, enabled: indicator.enabled === false } : indicator
+      )
+    );
+  }, []);
+
   return {
     lines,
     indicators,
@@ -186,5 +196,6 @@ export function useChartAPI(options?: UseChartAPIOptions) {
     addIndicator,
     removeIndicator,
     updateIndicatorSettings,
+    toggleIndicator,
   };
 }

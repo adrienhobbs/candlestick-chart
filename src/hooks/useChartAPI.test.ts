@@ -42,4 +42,19 @@ describe('useChartAPI', () => {
     act(() => result.current.removeIndicator(inst!.id));
     expect(result.current.indicators).toHaveLength(0);
   });
+
+  it('toggleIndicator flips enabled; the first flip of a legacy instance turns it off', () => {
+    const { result } = render();
+    let inst: IndicatorInstance | undefined;
+    act(() => {
+      inst = result.current.addIndicator('sma');
+    });
+    expect(result.current.indicators[0].enabled).toBeUndefined();
+
+    act(() => result.current.toggleIndicator(inst!.id));
+    expect(result.current.indicators[0].enabled).toBe(false);
+
+    act(() => result.current.toggleIndicator(inst!.id));
+    expect(result.current.indicators[0].enabled).toBe(true);
+  });
 });
