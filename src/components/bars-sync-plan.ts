@@ -2,15 +2,17 @@ import type { OHLCVBar } from '../types/chart';
 
 /**
  * How to bring the series from `prev` to `next` (both ascending, deduped):
- * - `set`: replace everything with `setData` — first load, a longer or shorter
- *   series, a prepended page, or a different series altogether;
+ * - `set`: replace everything with `setData` — first load, a shorter series, a
+ *   prepended page, several new bars, or a different series altogether;
  * - `update`: only the last bar changed (a forming bar ticking), so a single
  *   `update` keeps the view and is cheap;
+ * - `append`: one new bar after unchanged bars (a live rollover); the old last
+ *   bar may have changed too. Two `update` calls, no `setData`;
  * - `none`: nothing changed.
  */
-export type BarsSyncPlan = 'set' | 'update' | 'none';
+export type BarsSyncPlan = 'set' | 'update' | 'append' | 'none';
 
-function sameBar(a: OHLCVBar, b: OHLCVBar): boolean {
+export function sameBar(a: OHLCVBar, b: OHLCVBar): boolean {
   return (
     a === b ||
     (a.timestamp === b.timestamp &&
@@ -24,6 +26,14 @@ function sameBar(a: OHLCVBar, b: OHLCVBar): boolean {
 
 export function planBarsSync(prev: OHLCVBar[], next: OHLCVBar[]): BarsSyncPlan {
   if (prev.length === 0) return next.length === 0 ? 'none' : 'set';
+  if (next.length === prev.length + 1) {
+    const oldLast = prev.length - 1;
+    for (let i = 0; i < oldLast; i += 1) {
+      if (!sameBar(prev[i], next[i])) return 'set';
+    }
+    if (prev[oldLast].timestamp !== next[oldLast].timestamp) return 'set';
+    return next[oldLast + 1].timestamp > next[oldLast].timestamp ? 'append' : 'set';
+  }
   if (next.length !== prev.length) return 'set';
   const last = next.length - 1;
   // Every bar but the last must match: two symbols over the same window share

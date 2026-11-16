@@ -11,10 +11,24 @@ describe('planBarsSync', () => {
     expect(planBarsSync([], [])).toBe('none');
   });
 
-  it('a longer, shorter or emptied series is set in full', () => {
-    expect(planBarsSync(series(3), series(4))).toBe('set');
+  it('a shorter, emptied or much longer series is set in full', () => {
     expect(planBarsSync(series(4), series(3))).toBe('set');
     expect(planBarsSync(series(4), [])).toBe('set');
+    expect(planBarsSync(series(3), series(5))).toBe('set');
+  });
+
+  it('one bar appended after unchanged bars is an append, even if the old last bar changed', () => {
+    const prev = series(3);
+    expect(planBarsSync(prev, series(4))).toBe('append');
+    const closedChanged = [...prev.slice(0, 2), { ...prev[2], close: 100.7 }, bar(3 * 300_000)];
+    expect(planBarsSync(prev, closedChanged)).toBe('append');
+  });
+
+  it('an extra bar with an earlier bar changed, or a prepended bar, is set', () => {
+    const prev = series(3);
+    const earlierChanged = [{ ...prev[0], close: 1 }, prev[1], prev[2], bar(3 * 300_000)];
+    expect(planBarsSync(prev, earlierChanged)).toBe('set');
+    expect(planBarsSync(prev, [bar(-300_000), ...prev])).toBe('set');
   });
 
   it('a same-length series with different timestamps is set (a shifted window)', () => {
