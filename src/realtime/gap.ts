@@ -36,7 +36,8 @@ export function mergeGapBars(existing: OHLCVBar[], fetched: OHLCVBar[]): OHLCVBa
 /**
  * Host bars plus the gap bars newer than them; the host's bars win where both exist.
  * Both inputs must be sorted ascending and `gap` deduped (see normalizeBars).
- */export function withGapBars(host: OHLCVBar[], gap: OHLCVBar[]): OHLCVBar[] {
+ */
+export function withGapBars(host: OHLCVBar[], gap: OHLCVBar[]): OHLCVBar[] {
   if (gap.length === 0) return host;
   const lastTs = host.length ? host[host.length - 1].timestamp : -Infinity;
   const tail = gap.filter((b) => b.timestamp > lastTs);
