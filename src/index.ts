@@ -26,6 +26,21 @@ export { useChartAPI } from './hooks/useChartAPI';
 export { useBarsData } from './hooks/useBarsData';
 export { useRealtimeUpdates } from './hooks/useRealtimeUpdates';
 
+// Realtime: host-pushed ticks folded into bars; pass `live` to ChartComponent.
+export { useRealtimeBars, MAX_GAP_BARS } from './realtime/useRealtimeBars';
+export type { UseRealtimeBarsOptions, UseRealtimeBarsResult, GapFetchOptions } from './realtime/useRealtimeBars';
+export { DEFAULT_STALL_AFTER_MS } from './realtime/live-state';
+export { foldTick, mergeLive, intradayBucketMs } from './realtime/fold';
+export type {
+  RealtimeTick,
+  LiveState,
+  LiveStreamState,
+  LiveConnection,
+  LiveFoldState,
+  LiveBucketBar,
+  GapRange,
+} from './realtime/types';
+
 // Indicator system — this barrel re-exports core/types, core/registry,
 // core/calculator, core/persistence (incl. createPersistenceAdapter +
 // PersistenceAdapter), the built-in registry, and calculation utils.

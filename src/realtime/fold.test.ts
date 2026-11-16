@@ -360,3 +360,22 @@ describe('intradayBucketMs', () => {
     expect(intradayBucketMs('constructor')).toBeUndefined();
   });
 });
+
+describe('foldTick performance', () => {
+  it('folds a 1,000-tick burst well under budget', () => {
+    let state: LiveFoldState | null = null;
+    const start = performance.now();
+    for (let i = 0; i < 1000; i += 1) {
+      state = foldTick(state, {
+        key: 'XYZ',
+        bars: REST,
+        timeframe: '1Min',
+        tick: { price: 100 + Math.sin(i), time: T0 + i * 200 },
+      }).state;
+    }
+    const ms = performance.now() - start;
+    console.info(`foldTick: 1,000 ticks in ${ms.toFixed(2)} ms`);
+    // Target is under 5 ms on a dev laptop; 50 ms keeps CI noise from failing it.
+    expect(ms).toBeLessThan(50);
+  });
+});
