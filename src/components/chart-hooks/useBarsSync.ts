@@ -1,7 +1,7 @@
 import { useEffect, type Dispatch, type MutableRefObject, type SetStateAction } from 'react';
 import { ISeriesApi } from 'lightweight-charts';
 import { OHLCVBar, ChartTheme } from '../../types/chart';
-import { planBarsSync } from '../bars-sync-plan';
+import { planBarsSync, sortedUniqueBars } from '../bars-sync-plan';
 import { applyBarsSync } from '../bars-sync-apply';
 import type { LoadMoreGate } from '../load-more-gate';
 
@@ -33,12 +33,7 @@ export function useBarsSync({
   useEffect(() => {
     if (!candlestickSeriesRef.current || !volumeSeriesRef.current) return;
 
-    const sortedBars = [...bars].sort((a, b) => a.timestamp - b.timestamp);
-
-    // Sorted, so a duplicate timestamp is always adjacent; keep the first.
-    const uniqueBars = sortedBars.filter(
-      (bar, i) => i === 0 || bar.timestamp !== sortedBars[i - 1].timestamp,
-    );
+    const uniqueBars = sortedUniqueBars(bars);
 
     const plan = planBarsSync(previousBarsRef.current, uniqueBars);
 

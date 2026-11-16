@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { planBarsSync } from './bars-sync-plan';
+import { planBarsSync, sortedUniqueBars } from './bars-sync-plan';
 import type { OHLCVBar } from '../types/chart';
 
 const bar = (t: number, close = 100): OHLCVBar => ({ timestamp: t, open: 100, high: 101, low: 99, close, volume: 10 });
@@ -45,5 +45,31 @@ describe('planBarsSync', () => {
     const ticked = [...prev.slice(0, 2), { ...prev[2], close: 100.5 }];
     expect(planBarsSync(prev, ticked)).toBe('update');
     expect(planBarsSync(prev, series(3))).toBe('none');
+  });
+});
+
+describe('sortedUniqueBars', () => {
+  it('returns a copy of bars that are already ascending and unique', () => {
+    const bars = series(4);
+    const out = sortedUniqueBars(bars);
+    expect(out).toEqual(bars);
+    expect(out).not.toBe(bars);
+    out.push(bar(9e9));
+    expect(bars).toHaveLength(4);
+  });
+
+  it('sorts unordered bars ascending', () => {
+    const out = sortedUniqueBars([bar(600_000), bar(0), bar(300_000)]);
+    expect(out.map((b) => b.timestamp)).toEqual([0, 300_000, 600_000]);
+  });
+
+  it('keeps the first of a duplicated timestamp, sorted or not', () => {
+    expect(sortedUniqueBars([bar(0, 1), bar(300_000, 2), bar(300_000, 3)]).map((b) => b.close)).toEqual([1, 2]);
+    expect(sortedUniqueBars([bar(300_000, 2), bar(0, 1), bar(300_000, 3)]).map((b) => b.close)).toEqual([1, 2]);
+  });
+
+  it('handles empty and single-bar input', () => {
+    expect(sortedUniqueBars([])).toEqual([]);
+    expect(sortedUniqueBars([bar(5)])).toEqual([bar(5)]);
   });
 });

@@ -37,6 +37,27 @@ function samePrefix(prev: OHLCVBar[], next: OHLCVBar[]): boolean {
   return prev[last].timestamp === next[last].timestamp;
 }
 
+/**
+ * `bars` ascending with one bar per timestamp (the first wins). Always a new array:
+ * it becomes the previous-bars tracker, which must not alias an array the host
+ * may later mutate in place. Live updates arrive already sorted, so the O(n) check
+ * skips the sort on every tick.
+ */
+export function sortedUniqueBars(bars: OHLCVBar[]): OHLCVBar[] {
+  let ordered = true;
+  for (let i = 1; i < bars.length; i += 1) {
+    // `!(a > b)` also catches NaN timestamps, which go through the sort as before.
+    if (!(bars[i].timestamp > bars[i - 1].timestamp)) {
+      ordered = false;
+      break;
+    }
+  }
+  if (ordered) return bars.slice();
+  const sorted = [...bars].sort((a, b) => a.timestamp - b.timestamp);
+  // Sorted, so a duplicate timestamp is always adjacent; the stable sort keeps the first.
+  return sorted.filter((bar, i) => i === 0 || bar.timestamp !== sorted[i - 1].timestamp);
+}
+
 export function planBarsSync(prev: OHLCVBar[], next: OHLCVBar[]): BarsSyncPlan {
   if (prev.length === 0) return next.length === 0 ? 'none' : 'set';
   const last = prev.length - 1;
