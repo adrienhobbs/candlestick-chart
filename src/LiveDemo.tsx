@@ -17,7 +17,9 @@ const HISTORY_BARS = 2000;
 /** Random-walk 1Min bars from `fromMs` to `toMs` (bucket starts, inclusive), drifting from `startPrice` to `endPrice`. */
 function synthBars(fromMs: number, toMs: number, startPrice: number, endPrice = startPrice): OHLCVBar[] {
   const out: OHLCVBar[] = [];
-  const steps = Math.max(1, Math.round((toMs - fromMs) / MINUTE));
+  // One drift step per emitted bar: bar i targets startPrice + i/steps of the
+  // range, so the last bar (i === steps, at toMs) targets exactly endPrice.
+  const steps = Math.max(1, Math.round((toMs - fromMs) / MINUTE) + 1);
   let price = startPrice;
   for (let t = fromMs, i = 1; t <= toMs; t += MINUTE, i++) {
     const open = price;
@@ -193,7 +195,10 @@ export function LiveDemo() {
       <div className="flex flex-wrap items-center gap-2 mb-3">
         <button className={toggle(liveOn)} onClick={() => {
             setLiveOn((v) => !v);
-            setStreamState('connecting');
+            // onLiveStateChange only fires on a transition, so seed the label
+            // with the state the hook will derive (closed with no ticks stays
+            // 'disconnected'; an open connection starts as 'connecting').
+            setStreamState(connection === 'closed' ? 'disconnected' : 'connecting');
           }}>
           Live {liveOn ? 'on' : 'off'}
         </button>
