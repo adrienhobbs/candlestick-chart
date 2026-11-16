@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { OHLCVBar } from '../types/chart';
-import { foldTick, mergeLive, MAX_CLOSED } from './fold';
+import { foldTick, intradayBucketMs, mergeLive, MAX_CLOSED } from './fold';
 import type { LiveFoldState } from './types';
 
 const T0 = Date.parse('2026-10-30T16:25:00Z'); // 12:25 ET, a 5Min bucket start
@@ -313,5 +313,50 @@ describe('foldTick review fixes', () => {
     expect(lastBar(open).high).toBe(101);
     const pre = foldTick(null, { key: 'XYZ', bars, timeframe: '1Day', tick: { price: 101, time: '2026-11-02T13:45:00Z' } }); // 08:45 ET
     expect(pre.bars).toBe(bars);
+  });
+});
+
+describe('foldTick backwards refetch and volume', () => {
+  const B1 = T0 + 300_000;
+  const B2 = T0 + 600_000;
+  const B3 = T0 + 900_000;
+  const partial = (timestamp: number, high: number, low: number): OHLCVBar => ({ timestamp, open: low, high, low, close: high, volume: 1 });
+  const throughThree: OHLCVBar[] = [...REST, partial(B1, 100.6, 100.4), partial(B2, 100.0, 99.9), partial(B3, 100.6, 100.6)];
+  const live: Step[] = [
+    { price: 100.5, s: 301 },
+    { price: 101.0, s: 400 },
+    { price: 99.5, s: 601 },
+    { price: 100.8, s: 700 },
+    { price: 100.6, s: 901 },
+    { price: 100.6, s: 902, bars: throughThree },
+  ];
+
+  it('keeps closed buckets when a later refetch ends before them', () => {
+    const outs = fold([...live, { price: 100.6, s: 903, bars: [...REST, partial(B1, 100.6, 100.4)] }]);
+    const out = outs[outs.length - 1];
+    expect(out.bars.map((b) => b.timestamp)).toEqual([T0 - 300_000, T0, B1, B2, B3]);
+    expect(out.bars[3]).toMatchObject({ low: 99.5, close: 100.8 });
+  });
+
+  it('a refetch ending at a partial closed bucket keeps its traded extremes', () => {
+    const outs = fold([...live, { price: 100.6, s: 903, bars: [...REST, partial(B1, 100.6, 100.4), partial(B2, 100.0, 99.9)] }]);
+    const out = outs[outs.length - 1];
+    expect(out.bars.map((b) => b.timestamp)).toEqual([T0 - 300_000, T0, B1, B2, B3]);
+    expect(out.bars[3]).toMatchObject({ high: 100.8, low: 99.5, close: 100.8 });
+  });
+
+  it('a covered bucket’s volume never trails a refetch that grew REST’s volume', () => {
+    const grown: OHLCVBar[] = [REST[0], { ...REST[1], volume: 50 }];
+    const [first, second] = fold([{ price: 100.3, s: 10, size: 3 }, { price: 100.3, s: 11, size: 2, bars: grown }]);
+    expect(lastBar(first).volume).toBe(4);
+    expect(lastBar(second).volume).toBe(52);
+  });
+});
+
+describe('intradayBucketMs', () => {
+  it('returns the bucket size for intraday timeframes only', () => {
+    expect(intradayBucketMs('5Min')).toBe(300_000);
+    expect(intradayBucketMs('1Day')).toBeUndefined();
+    expect(intradayBucketMs('constructor')).toBeUndefined();
   });
 });

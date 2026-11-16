@@ -20,15 +20,18 @@ export function tickTimeMs(time: number | string): number {
   return typeof time === 'number' ? time : Date.parse(time);
 }
 
+/** Bucket length of an intraday timeframe, or undefined (including for prototype keys like 'constructor'). */
+export function intradayBucketMs(timeframe: string): number | undefined {
+  return Object.prototype.hasOwnProperty.call(INTRADAY_BUCKET_MS, timeframe) ? INTRADAY_BUCKET_MS[timeframe] : undefined;
+}
+
 /**
  * The bucket a tick folds into, or null when it must not be folded. A 1Day `last`
  * must be stamped at its New York session day (e.g. ET midnight, as Alpaca does).
  */
 export function bucketOf(last: OHLCVBar, timeframe: string, ms: number): number | null {
-  if (Object.prototype.hasOwnProperty.call(INTRADAY_BUCKET_MS, timeframe)) {
-    const size = INTRADAY_BUCKET_MS[timeframe];
-    return Math.floor(ms / size) * size;
-  }
+  const size = intradayBucketMs(timeframe);
+  if (size !== undefined) return Math.floor(ms / size) * size;
   if (timeframe === '1Day') {
     // Daily bars are regular-session only, and the next day's bar comes from REST.
     const t = etDateFields(ms, NEW_YORK);
@@ -59,13 +62,6 @@ function mergeInto(rest: OHLCVBar, live: LiveBucketBar): OHLCVBar {
 function liveBar(live: LiveBucketBar): OHLCVBar {
   const { bucket, open, high, low, close, volume } = live;
   return { timestamp: bucket, open, high, low, close, volume };
-}
-
-/** Index of the first closed bucket at or after `fromMs`; closed is oldest first. */
-function firstKept(closed: LiveBucketBar[], fromMs: number): number {
-  let i = 0;
-  while (i < closed.length && closed[i].bucket < fromMs) i++;
-  return i;
 }
 
 /**
@@ -138,12 +134,13 @@ export function foldTick(
     const grown = base.closed.concat(bucketBar(base));
     closed = grown.length > MAX_CLOSED ? grown.slice(-MAX_CLOSED) : grown;
   }
-  const kept = firstKept(closed, last.timestamp);
-  if (kept > 0) closed = closed.slice(kept);
+  // Closed buckets older than REST's last bar are kept, not pruned: applyLive skips
+  // them, and a later refetch that ends earlier still needs them.
 
-  // The bar the forming bucket follows: the newest live closed bucket (whose close
-  // also wins when it merges into REST's last bar), else REST's last.
-  const tailClose = closed.length > 0 ? closed[closed.length - 1].close : last.close;
+  // The bar the forming bucket follows: the newest live closed bucket at or after
+  // REST's last bar (its close also wins when it merges into that bar), else REST's last.
+  const newestClosed = closed.length > 0 ? closed[closed.length - 1] : null;
+  const tailClose = newestClosed !== null && newestClosed.bucket >= last.timestamp ? newestClosed.close : last.close;
   // A bucket REST has not returned yet opens at the close of the bar before it.
   // One REST already has starts from that bar, so a later refetch that drops it
   // re-appends the live bucket without losing REST's open, extremes and volume.
@@ -157,7 +154,8 @@ export function foldTick(
     open = base.open;
     tickHigh = Math.max(base.tickHigh, price);
     tickLow = Math.min(base.tickLow, price);
-    volume = base.volume + size;
+    // A refetch can report more volume for this bucket than the live running total.
+    volume = (bucket === last.timestamp ? Math.max(base.volume, last.volume) : base.volume) + size;
   } else if (covered) {
     open = last.open;
     tickHigh = Math.max(last.high, price);
