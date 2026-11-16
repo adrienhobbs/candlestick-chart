@@ -22,6 +22,8 @@ import { useTradeOverlays } from './chart-hooks/useTradeOverlays';
 import { useHoverBar } from './chart-hooks/useHoverBar';
 import { US_EQUITY_PRESET, type SessionsConfig } from '../sessions/sessions';
 import { useOhlcLegend } from './chart-hooks/useOhlcLegend';
+import { useLivePrice } from './chart-hooks/useLivePrice';
+import type { LiveState, LiveStreamState } from '../realtime/types';
 import OhlcLegend from './OhlcLegend';
 import type { OhlcLegendData } from './ohlcLegendData';
 import LineSettingsDialog from './LineSettingsDialog';
@@ -163,6 +165,13 @@ export interface ChartComponentProps {
   theme?: Partial<ChartTheme>;
   /** Draw volume in its own pane (default) or as an overlay on the price pane. */
   volumeMode?: VolumeMode;
+  /**
+   * Live price from `useRealtimeBars`: draws a price line with axis tag (replacing
+   * the series' last-value line) and, on intraday timeframes, a bar-close countdown.
+   */
+  live?: LiveState | null;
+  /** Fired when `live.state` changes (connecting / live / stalled / disconnected). */
+  onLiveStateChange?: (state: LiveStreamState) => void;
 }
 
 export default function ChartComponent({
@@ -195,6 +204,8 @@ export default function ChartComponent({
   onHoverBar,
   theme,
   volumeMode = 'pane',
+  live = null,
+  onLiveStateChange,
 }: ChartComponentProps) {
   // Merge the consumer's partial theme over the library default. `theme` should
   // be memoized by the caller; a stable identity keeps the live-apply effect from
@@ -209,6 +220,7 @@ export default function ChartComponent({
   // DOM + chart object refs.
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const legendRef = useRef<HTMLDivElement>(null);
+  const countdownRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const candlestickSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
   const volumeSeriesRef = useRef<ISeriesApi<'Histogram'> | null>(null);
@@ -425,6 +437,9 @@ export default function ChartComponent({
   // [effects 8 + 9] Infinite price lines + floating delete-button positions.
   const linePositions = usePriceLines({ chartRef, candlestickSeriesRef, chartContainerRef, lines: unboundedLines, priceLineRefs });
 
+  // Live price line + bar-close countdown (`live` from useRealtimeBars).
+  useLivePrice({ chartRef, candlestickSeriesRef, countdownRef, live, theme: resolvedTheme, onLiveStateChange });
+
   // [effect 10] Shaded full-width price bands.
   const bandRects = usePriceBands({ chartRef, candlestickSeriesRef, priceBands: unboundedBands });
 
@@ -558,6 +573,22 @@ export default function ChartComponent({
       )}
       <div className={fill ? 'relative h-full' : 'relative'}>
         <div ref={chartContainerRef} className={fill ? 'w-full h-full' : 'w-full'} />
+        <div
+          ref={countdownRef}
+          style={{
+            position: 'absolute',
+            right: 0,
+            display: 'none',
+            zIndex: 6,
+            pointerEvents: 'none',
+            textAlign: 'center',
+            fontSize: 11,
+            lineHeight: '16px',
+            color: '#fff',
+            fontFamily: resolvedTheme.fontFamily,
+            fontVariantNumeric: 'tabular-nums',
+          }}
+        />
 
         {ohlcLegend && (
           <div
