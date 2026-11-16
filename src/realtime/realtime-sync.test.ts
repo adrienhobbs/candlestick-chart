@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { OHLCVBar } from '../types/chart';
-import { planBarsSync } from '../components/bars-sync-plan';
+import { planBarsSync, type BarsSyncPlan } from '../components/bars-sync-plan';
 import { applyBarsSync } from '../components/bars-sync-apply';
 import { foldTick } from './fold';
 import type { LiveFoldState } from './types';
@@ -11,14 +11,39 @@ const REST: OHLCVBar[] = [
   { timestamp: T0, open: 100, high: 100.4, low: 99.8, close: 100.2, volume: 1 },
 ];
 
+/** Mimics lightweight-charts: update() replaces the last item at its time, appends a newer one, rejects an older one. */
+function strictSeries<T extends { time: unknown }>() {
+  const counts = { set: 0, update: 0 };
+  let data: T[] = [];
+  return {
+    counts,
+    data: () => data,
+    setData(items: T[]) {
+      counts.set++;
+      data = [...items];
+    },
+    update(item: T) {
+      counts.update++;
+      const last = data[data.length - 1];
+      if (last !== undefined && Number(item.time) < Number(last.time)) {
+        throw new Error(`update at ${String(item.time)} is older than the last bar ${String(last.time)}`);
+      }
+      if (last !== undefined && Number(item.time) === Number(last.time)) data = [...data.slice(0, -1), item];
+      else data = [...data, item];
+    },
+  };
+}
+
 describe('realtime → series', () => {
   it('in-bucket ticks and rollovers reach the series through update() only', () => {
-    const counts = { set: 0, update: 0 };
-    const candle = { setData: () => void counts.set++, update: () => void counts.update++ };
-    const volume = { setData: () => undefined, update: () => undefined };
+    const candle = strictSeries<{ time: unknown }>();
+    const volume = strictSeries<{ time: unknown }>();
+    const plans: BarsSyncPlan[] = [];
     let prev: OHLCVBar[] = [];
     const push = (bars: OHLCVBar[]) => {
-      applyBarsSync(planBarsSync(prev, bars), prev, bars, candle, volume, { volumeUpColor: 'u', volumeDownColor: 'd' });
+      const plan = planBarsSync(prev, bars);
+      plans.push(plan);
+      applyBarsSync(plan, prev, bars, candle as never, volume as never, { volumeUpColor: 'u', volumeDownColor: 'd' });
       prev = bars;
     };
     push(REST);
@@ -28,7 +53,11 @@ describe('realtime → series', () => {
       state = out.state;
       push(out.bars);
     }
-    expect(counts.set).toBe(1); // the initial load only
-    expect(counts.update).toBeGreaterThanOrEqual(6);
+    expect(plans).toEqual(['set', 'update', 'update', 'append', 'update', 'append', 'append']);
+    expect(candle.counts.set).toBe(1); // the initial load only
+    expect(candle.data()).toEqual(
+      prev.map((b) => ({ time: b.timestamp / 1000, open: b.open, high: b.high, low: b.low, close: b.close })),
+    );
+    expect(volume.data().map((v) => v.time)).toEqual(prev.map((b) => b.timestamp / 1000));
   });
 });

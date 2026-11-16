@@ -33,7 +33,8 @@ export function applyBarsSync(
   volume: SeriesSink<HistogramData>,
   theme: VolumeColors,
 ): void {
-  if (plan === 'set') {
+  // With nothing drawn yet, updating only the new bar would drop the ones before it.
+  if (plan === 'set' || (plan === 'append' && (prev.length === 0 || next.length < 2))) {
     candles.setData(next.map(toCandle));
     volume.setData(next.map((b) => toVolume(b, theme)));
     return;
