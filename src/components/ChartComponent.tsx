@@ -6,6 +6,7 @@ import { DEFAULT_CHART_THEME, buildBaseChartLayoutOptions } from '../utils/chart
 import { IndicatorInstance } from '../indicators/core/types';
 import { MIN_VOLUME_PANE_HEIGHT, VOLUME_OVERLAY_FRACTION, VOLUME_PANE_FRACTION } from './chart-constants';
 import { createLoadMoreGate, type LoadMoreGate } from './load-more-gate';
+import type { BarsSyncPlan } from './bars-sync-plan';
 import { RAIL_BOTTOM_GAP_PX, RAIL_HEIGHT_PX } from '../indicators/primitives/AnnotationsPrimitive';
 import { useChartLifecycle } from './chart-hooks/useChartLifecycle';
 import { useTradeFocus } from './chart-hooks/useTradeFocus';
@@ -236,6 +237,8 @@ export default function ChartComponent({
   const nextPaneIndexRef = useRef<number>(2);
   // Shared with the bars-sync hook + reset by the create-once teardown.
   const previousBarsRef = useRef<OHLCVBar[]>([]);
+  // Written by the bars sync, then read by the indicator sync later in the same commit.
+  const barsSyncPlanRef = useRef<BarsSyncPlan | null>(null);
   // Load-more state, shared by the range subscription (requests) and bars sync
   // (older bars arriving ends a request).
   const loadMoreGateRef = useRef<LoadMoreGate>(createLoadMoreGate());
@@ -423,6 +426,7 @@ export default function ChartComponent({
     previousBarsRef,
     setIsLoadingMore,
     bars,
+    barsSyncPlanRef,
   });
 
   // Split into infinite (legacy createPriceLine / full-width div) vs time-bounded
@@ -483,6 +487,7 @@ export default function ChartComponent({
     firstIndicatorPane,
     indicators,
     bars,
+    barsSyncPlanRef,
   });
 
   // [effect 13] Trade, host and selection markers.

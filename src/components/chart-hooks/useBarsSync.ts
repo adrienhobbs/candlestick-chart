@@ -1,7 +1,7 @@
 import { useEffect, type Dispatch, type MutableRefObject, type SetStateAction } from 'react';
 import { ISeriesApi } from 'lightweight-charts';
 import { OHLCVBar, ChartTheme } from '../../types/chart';
-import { planBarsSync, sortedUniqueBars } from '../bars-sync-plan';
+import { planBarsSync, sortedUniqueBars, type BarsSyncPlan } from '../bars-sync-plan';
 import { applyBarsSync } from '../bars-sync-apply';
 import type { LoadMoreGate } from '../load-more-gate';
 
@@ -13,6 +13,8 @@ interface UseBarsSyncArgs {
   previousBarsRef: MutableRefObject<OHLCVBar[]>;
   setIsLoadingMore: Dispatch<SetStateAction<boolean>>;
   bars: OHLCVBar[];
+  /** Receives each plan, for the indicator sync that runs after this effect. */
+  barsSyncPlanRef?: MutableRefObject<BarsSyncPlan | null>;
 }
 
 /**
@@ -29,6 +31,7 @@ export function useBarsSync({
   previousBarsRef,
   setIsLoadingMore,
   bars,
+  barsSyncPlanRef,
 }: UseBarsSyncArgs) {
   useEffect(() => {
     if (!candlestickSeriesRef.current || !volumeSeriesRef.current) return;
@@ -36,6 +39,7 @@ export function useBarsSync({
     const uniqueBars = sortedUniqueBars(bars);
 
     const plan = planBarsSync(previousBarsRef.current, uniqueBars);
+    if (barsSyncPlanRef) barsSyncPlanRef.current = plan;
 
     if (loadMoreGateRef.current.onBars(uniqueBars[0]?.timestamp)) setIsLoadingMore(false);
 
