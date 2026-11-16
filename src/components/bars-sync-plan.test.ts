@@ -73,3 +73,23 @@ describe('sortedUniqueBars', () => {
     expect(sortedUniqueBars([bar(5)])).toEqual([bar(5)]);
   });
 });
+
+describe('sortedUniqueBars with NaN timestamps', () => {
+  // The sort + filter useBarsSync ran before the ordered-input shortcut.
+  const legacy = (bars: OHLCVBar[]) => {
+    const sorted = [...bars].sort((a, b) => a.timestamp - b.timestamp);
+    return sorted.filter((b, i) => i === 0 || b.timestamp !== sorted[i - 1].timestamp);
+  };
+
+  for (const [label, input] of [
+    ['first', [bar(NaN, 1), bar(0, 2), bar(300_000, 3)]],
+    ['in the middle', [bar(0, 1), bar(NaN, 2), bar(300_000, 3)]],
+    ['last', [bar(0, 1), bar(300_000, 2), bar(NaN, 3)]],
+    ['twice, unsorted', [bar(600_000, 1), bar(NaN, 2), bar(0, 3), bar(NaN, 4), bar(300_000, 5)]],
+    ['alone', [bar(NaN, 1)]],
+  ] as const) {
+    it(`matches the old sort + filter with a NaN ${label}`, () => {
+      expect(sortedUniqueBars([...input])).toEqual(legacy([...input]));
+    });
+  }
+});

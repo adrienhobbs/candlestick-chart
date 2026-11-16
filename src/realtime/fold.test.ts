@@ -362,20 +362,30 @@ describe('intradayBucketMs', () => {
 });
 
 describe('foldTick performance', () => {
-  it('folds a 1,000-tick burst well under budget', () => {
-    let state: LiveFoldState | null = null;
-    const start = performance.now();
-    for (let i = 0; i < 1000; i += 1) {
-      state = foldTick(state, {
-        key: 'XYZ',
-        bars: REST,
-        timeframe: '1Min',
-        tick: { price: 100 + Math.sin(i), time: T0 + i * 200 },
-      }).state;
-    }
-    const ms = performance.now() - start;
-    console.info(`foldTick: 1,000 ticks in ${ms.toFixed(2)} ms`);
-    // Target is under 5 ms on a dev laptop; 50 ms keeps CI noise from failing it.
-    expect(ms).toBeLessThan(50);
+  const HISTORY_5000: OHLCVBar[] = Array.from({ length: 5000 }, (_, i) => {
+    const close = 100 + Math.sin(i / 9);
+    return { timestamp: T0 - (4999 - i) * 60_000, open: close - 0.1, high: close + 0.2, low: close - 0.2, close, volume: 10 };
   });
+
+  for (const [label, bars] of [
+    ['the two-bar history', REST],
+    ['a 5,000-bar history', HISTORY_5000],
+  ] as const) {
+    it(`folds a 1,000-tick burst over ${label} well under budget`, () => {
+      let state: LiveFoldState | null = null;
+      const start = performance.now();
+      for (let i = 0; i < 1000; i += 1) {
+        state = foldTick(state, {
+          key: 'XYZ',
+          bars,
+          timeframe: '1Min',
+          tick: { price: 100 + Math.sin(i), time: T0 + i * 200 },
+        }).state;
+      }
+      const ms = performance.now() - start;
+      console.info(`foldTick over ${bars.length} bars: 1,000 ticks in ${ms.toFixed(2)} ms`);
+      // Target is under 5 ms on a dev laptop; 50 ms keeps CI noise from failing it.
+      expect(ms).toBeLessThan(50);
+    });
+  }
 });
