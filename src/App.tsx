@@ -27,6 +27,7 @@ import type {
 // NOTE: ChartAPIProvider / useChartAPIContext are NOT part of the public barrel
 // (`./index`), so they must still be imported from the context module directly.
 import { ChartAPIProvider, useChartAPIContext } from './contexts/ChartAPIContext';
+import { LiveDemo } from './LiveDemo';
 
 registerBuiltInIndicators();
 
@@ -681,6 +682,8 @@ function AppContent() {
             />
           </div>
         </div>
+
+        <LiveDemo />
       </main>
 
       <SettingsDialog
