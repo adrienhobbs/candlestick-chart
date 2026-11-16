@@ -10,10 +10,16 @@ export interface RealtimeTick {
 export interface LiveBucketBar {
   bucket: number;
   open: number;
+  /** Includes `open`, so a bar appended from this bucket is a valid candle. */
   high: number;
+  /** Includes `open`, so a bar appended from this bucket is a valid candle. */
   low: number;
   close: number;
   volume: number;
+  /** Highest traded price: the ticks', plus REST's high when REST had the bucket first. */
+  tickHigh: number;
+  /** Lowest traded price: the ticks', plus REST's low when REST had the bucket first. */
+  tickLow: number;
 }
 
 /** The forming bucket plus the closed buckets REST has not covered yet, oldest first. */

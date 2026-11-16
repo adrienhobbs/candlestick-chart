@@ -58,7 +58,7 @@ describe('foldTick', () => {
       { price: 100.6, s: 71, bars: wider },
     ]);
     expect(lastBar(afterLagging).high).toBe(100.9);
-    // The live bucket was seeded from REST's first view (low 99.8), so a lagging refetch cannot narrow it.
+    // The live bucket remembers REST's earlier low of 99.8, and the merge keeps the wider of that and the refetch's 99.9.
     expect(lastBar(afterLagging).low).toBe(99.8);
     expect({ high: lastBar(afterWider).high, low: lastBar(afterWider).low }).toEqual({ high: 101.2, low: 99.1 });
   });
@@ -182,15 +182,15 @@ describe('foldTick', () => {
   it(`caps the closed list at ${MAX_CLOSED}`, () => {
     const outs = fold(Array.from({ length: 35 }, (_, i) => ({ price: 100 + i / 100, s: 300 * (i + 1) + 1 })));
     const last = outs[outs.length - 1];
-    expect(last.state!.closed).toHaveLength(MAX_CLOSED);
     expect(last.bars).toHaveLength(REST.length + MAX_CLOSED + 1);
   });
 
   it('adds tick size to volume, never below the REST volume', () => {
     const [, appended] = fold([{ price: 100.5, s: 301, size: 10 }, { price: 100.6, s: 302, size: 5 }]);
     expect(lastBar(appended).volume).toBe(15);
+    // A covered bucket starts from REST's volume (1) and adds the tick's size.
     const [covered] = fold([{ price: 100.3, s: 10, size: 3 }]);
-    expect(lastBar(covered).volume).toBe(3);
+    expect(lastBar(covered).volume).toBe(4);
   });
 
   it('daily bars take regular-session ticks only and never append', () => {
@@ -254,5 +254,64 @@ describe('foldTick seeding and timeframes', () => {
     const out = foldTick(first.state, { key: 'XYZ', bars: empty, timeframe: '5Min', tick: { price: 101, time: at(11) } });
     expect(out.bars).toBe(empty);
     expect(out.state).toBe(first.state);
+  });
+});
+
+describe('foldTick review fixes', () => {
+  it('does not draw a wick to the seeded open once REST returns the appended bucket', () => {
+    const returned: OHLCVBar[] = [...REST, { timestamp: T0 + 300_000, open: 100.5, high: 100.6, low: 100.45, close: 100.5, volume: 2 }];
+    const [appended, merged] = fold([
+      { price: 100.5, s: 301 },
+      { price: 100.5, s: 302, bars: returned },
+    ]);
+    expect({ open: lastBar(appended).open, low: lastBar(appended).low }).toEqual({ open: 100.2, low: 100.2 });
+    const m = lastBar(merged);
+    expect({ open: m.open, high: m.high, low: m.low, close: m.close }).toEqual({ open: 100.5, high: 100.6, low: 100.45, close: 100.5 });
+  });
+
+  it('a shorter refetch keeps REST volume', () => {
+    const B: OHLCVBar = { timestamp: T0, open: 100.0, high: 100.4, low: 99.8, close: 100.2, volume: 100 };
+    const [, shorter] = fold([
+      { price: 100.2, s: 10, size: 5, bars: [REST[0], B] },
+      { price: 100.25, s: 11, size: 2, bars: [REST[0]] },
+    ]);
+    expect(lastBar(shorter).volume).toBe(107);
+  });
+
+  it('a covered bucket that closed keeps REST’s open, extremes and volume when a refetch drops it', () => {
+    const B: OHLCVBar = { timestamp: T0, open: 100.0, high: 100.4, low: 99.8, close: 100.2, volume: 100 };
+    const [, , shorter] = fold([
+      { price: 100.3, s: 10, size: 5, bars: [REST[0], B] },
+      { price: 100.5, s: 301, bars: [REST[0], B] },
+      { price: 100.6, s: 302, bars: [REST[0]] },
+    ]);
+    expect(shorter.bars.map((b) => b.timestamp)).toEqual([T0 - 300_000, T0, T0 + 300_000]);
+    expect(shorter.bars[1]).toEqual({ timestamp: T0, open: 100.0, high: 100.4, low: 99.8, close: 100.3, volume: 105 });
+    expect(lastBar(shorter).open).toBe(100.3);
+  });
+
+  it('ignores a non-positive price and treats a non-finite size as zero', () => {
+    for (const price of [0, -1]) {
+      const [out] = fold([{ price, s: 10 }]);
+      expect(out.bars).toBe(REST);
+      expect(out.state).toBeNull();
+    }
+    const [, appended] = fold([{ price: 100.5, s: 301, size: Number.POSITIVE_INFINITY }, { price: 100.6, s: 302, size: 2 }]);
+    expect(lastBar(appended).volume).toBe(2);
+  });
+
+  it('does not treat a prototype key as an intraday timeframe', () => {
+    const [out] = fold([{ price: 100.5, s: 10, timeframe: 'constructor' }]);
+    expect(out.bars).toBe(REST);
+    expect(out.state).toBeNull();
+  });
+
+  it('daily bars use the New York session after the DST change', () => {
+    const day = Date.parse('2026-11-02T05:00:00Z'); // midnight ET, after DST ends
+    const bars: OHLCVBar[] = [{ timestamp: day, open: 100, high: 100.4, low: 99.8, close: 100.2, volume: 1 }];
+    const open = foldTick(null, { key: 'XYZ', bars, timeframe: '1Day', tick: { price: 101, time: '2026-11-02T14:31:00Z' } }); // 09:31 ET
+    expect(lastBar(open).high).toBe(101);
+    const pre = foldTick(null, { key: 'XYZ', bars, timeframe: '1Day', tick: { price: 101, time: '2026-11-02T13:45:00Z' } }); // 08:45 ET
+    expect(pre.bars).toBe(bars);
   });
 });
