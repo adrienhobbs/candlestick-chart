@@ -23,6 +23,7 @@ import { useHoverBar } from './chart-hooks/useHoverBar';
 import { US_EQUITY_PRESET, type SessionsConfig } from '../sessions/sessions';
 import { useOhlcLegend } from './chart-hooks/useOhlcLegend';
 import { useLivePrice } from './chart-hooks/useLivePrice';
+import { COUNTDOWN_HEIGHT_PX } from './live-price';
 import type { LiveState, LiveStreamState } from '../realtime/types';
 import OhlcLegend from './OhlcLegend';
 import type { OhlcLegendData } from './ohlcLegendData';
@@ -575,16 +576,15 @@ export default function ChartComponent({
         <div ref={chartContainerRef} className={fill ? 'w-full h-full' : 'w-full'} />
         <div
           ref={countdownRef}
+          aria-hidden="true"
           style={{
             position: 'absolute',
             right: 0,
-            display: 'none',
             zIndex: 6,
             pointerEvents: 'none',
             textAlign: 'center',
             fontSize: 11,
-            lineHeight: '16px',
-            color: '#fff',
+            lineHeight: `${COUNTDOWN_HEIGHT_PX}px`,
             fontFamily: resolvedTheme.fontFamily,
             fontVariantNumeric: 'tabular-nums',
           }}

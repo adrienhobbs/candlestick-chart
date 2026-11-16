@@ -2,10 +2,7 @@ import { useEffect, useRef, type MutableRefObject, type RefObject } from 'react'
 import { IChartApi, IPriceLine, ISeriesApi, LineStyle } from 'lightweight-charts';
 import type { ChartTheme } from '../../types/chart';
 import type { LiveState, LiveStreamState } from '../../realtime/types';
-import { countdownText, livePriceColor } from '../live-price';
-
-/** Half the axis tag's height: the countdown sits just under the price tag. */
-const LIVE_TAG_HALF_HEIGHT = 9;
+import { COUNTDOWN_HEIGHT_PX, contrastTextColor, countdownText, livePriceColor, tagHalfHeight } from '../live-price';
 
 interface UseLivePriceArgs {
   chartRef: MutableRefObject<IChartApi | null>;
@@ -16,38 +13,73 @@ interface UseLivePriceArgs {
   onLiveStateChange?: (state: LiveStreamState) => void;
 }
 
+interface HeldLine {
+  series: ISeriesApi<'Candlestick'>;
+  line: IPriceLine;
+  /** The series' own options before the live line hid them. */
+  restore: { priceLineVisible: boolean; lastValueVisible: boolean };
+}
+
+interface CountdownView {
+  shown: boolean;
+  top: string;
+  width: string;
+  background: string;
+  color: string;
+  text: string;
+}
+
+const HIDDEN: CountdownView = { shown: false, top: '', width: '', background: '', color: '', text: '' };
+
 /**
  * Draws `live` on the chart: a price line with axis tag (replacing the series' own
  * last-value line while set) and a bar-close countdown under the tag. The countdown
- * is written to its element directly, once a second, without re-rendering the chart.
+ * is written to its element directly, without re-rendering the chart: its position
+ * follows the axis every animation frame and its text every second.
  */
 export function useLivePrice({ chartRef, candlestickSeriesRef, countdownRef, live, theme, onLiveStateChange }: UseLivePriceArgs) {
-  const lineRef = useRef<{ series: ISeriesApi<'Candlestick'>; line: IPriceLine } | null>(null);
+  const lineRef = useRef<HeldLine | null>(null);
   const liveRef = useRef<LiveState | null>(live ?? null);
   liveRef.current = live ?? null;
   const themeRef = useRef(theme);
   themeRef.current = theme;
+  const writtenRef = useRef<{ el: HTMLDivElement; view: CountdownView } | null>(null);
 
-  const placeCountdown = () => {
-    const el = countdownRef.current;
-    if (!el) return;
+  const viewNow = (): CountdownView => {
     const current = liveRef.current;
     const series = candlestickSeriesRef.current;
     const chart = chartRef.current;
     const text = countdownText(current, Date.now());
-    const y = current && series ? series.priceToCoordinate(current.price) : null;
-    if (!current || !chart || text === null || y === null) {
-      el.style.display = 'none';
-      return;
-    }
-    el.style.display = 'block';
-    el.style.top = `${y + LIVE_TAG_HALF_HEIGHT}px`;
-    el.style.width = `${chart.priceScale('right').width()}px`;
-    el.style.background = livePriceColor(current, themeRef.current);
-    el.textContent = text;
+    if (!current || !series || !chart || text === null) return HIDDEN;
+    const y = series.priceToCoordinate(current.price);
+    if (y === null || y < 0) return HIDDEN;
+    const top = y + tagHalfHeight(chart.options().layout?.fontSize);
+    const paneHeight = chart.panes()[0]?.getHeight() ?? 0;
+    const width = chart.priceScale('right').width();
+    if (top + COUNTDOWN_HEIGHT_PX > paneHeight || width <= 0) return HIDDEN;
+    const background = livePriceColor(current, themeRef.current);
+    return { shown: true, top: `${top}px`, width: `${width}px`, background, color: contrastTextColor(background), text };
   };
-  const placeRef = useRef(placeCountdown);
-  placeRef.current = placeCountdown;
+
+  // Writes only what changed since the last write to this element.
+  const place = () => {
+    const el = countdownRef.current;
+    if (!el) return;
+    const next = viewNow();
+    const prev = writtenRef.current?.el === el ? writtenRef.current.view : null;
+    if (prev?.shown !== next.shown) el.style.display = next.shown ? 'block' : 'none';
+    if (next.shown) {
+      if (prev?.top !== next.top) el.style.top = next.top;
+      if (prev?.width !== next.width) el.style.width = next.width;
+      if (prev?.background !== next.background) el.style.background = next.background;
+      if (prev?.color !== next.color) el.style.color = next.color;
+      if (prev?.text !== next.text) el.textContent = next.text;
+    }
+    // While hidden the other fields keep what the element last showed.
+    writtenRef.current = { el, view: next.shown ? next : { ...(prev ?? HIDDEN), shown: false } };
+  };
+  const placeRef = useRef(place);
+  placeRef.current = place;
 
   useEffect(() => {
     const series = candlestickSeriesRef.current;
@@ -58,7 +90,7 @@ export function useLivePrice({ chartRef, candlestickSeriesRef, countdownRef, liv
         // A recreated series no longer has the old line or the hidden options.
         if (held.series === series) {
           series.removePriceLine(held.line);
-          series.applyOptions({ priceLineVisible: true, lastValueVisible: true });
+          series.applyOptions(held.restore);
         }
         lineRef.current = null;
       }
@@ -69,6 +101,7 @@ export function useLivePrice({ chartRef, candlestickSeriesRef, countdownRef, liv
     if (held && held.series === series) {
       held.line.applyOptions({ price: live.price, color });
     } else {
+      const { priceLineVisible, lastValueVisible } = series.options();
       series.applyOptions({ priceLineVisible: false, lastValueVisible: false });
       const line = series.createPriceLine({
         price: live.price,
@@ -78,25 +111,26 @@ export function useLivePrice({ chartRef, candlestickSeriesRef, countdownRef, liv
         axisLabelVisible: true,
         title: '',
       });
-      lineRef.current = { series, line };
+      lineRef.current = { series, line, restore: { priceLineVisible, lastValueVisible } };
     }
     placeRef.current();
   }, [live, theme, candlestickSeriesRef]);
 
+  // The axis can move without a tick (zoom, autoscale, pane resize), so the position
+  // is re-read every frame; the interval keeps the text going while frames pause.
   const hasCountdown = live != null && live.barCloseAt !== null;
   useEffect(() => {
     if (!hasCountdown) return;
-    const chart = chartRef.current;
-    const place = () => placeRef.current();
-    const id = setInterval(place, 1000);
-    chart?.timeScale().subscribeVisibleLogicalRangeChange(place);
-    window.addEventListener('resize', place);
+    let frame = requestAnimationFrame(function loop() {
+      placeRef.current();
+      frame = requestAnimationFrame(loop);
+    });
+    const id = setInterval(() => placeRef.current(), 1000);
     return () => {
+      cancelAnimationFrame(frame);
       clearInterval(id);
-      chart?.timeScale().unsubscribeVisibleLogicalRangeChange(place);
-      window.removeEventListener('resize', place);
     };
-  }, [hasCountdown, chartRef]);
+  }, [hasCountdown]);
 
   const onChangeRef = useRef(onLiveStateChange);
   onChangeRef.current = onLiveStateChange;

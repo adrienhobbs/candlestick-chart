@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { DEFAULT_CHART_THEME } from '../utils/chartTheme';
-import { countdownText, formatCountdown, livePriceColor } from './live-price';
+import { contrastTextColor, countdownText, formatCountdown, livePriceColor, tagHalfHeight } from './live-price';
 
 const live = { price: 101, reference: 100, barCloseAt: 300_000, state: 'live' as const };
 
@@ -32,5 +32,32 @@ describe('livePriceColor', () => {
     expect(livePriceColor({ ...live, price: 99 }, DEFAULT_CHART_THEME)).toBe(DEFAULT_CHART_THEME.downColor);
     expect(livePriceColor(live, { ...DEFAULT_CHART_THEME, livePriceUpColor: '#fff' })).toBe('#fff');
     expect(livePriceColor({ ...live, price: 99 }, { ...DEFAULT_CHART_THEME, livePriceDownColor: '#000' })).toBe('#000');
+  });
+});
+
+describe('contrastTextColor', () => {
+  it('is black on light backgrounds and white on dark ones', () => {
+    expect(contrastTextColor('#ffffff')).toBe('#000');
+    expect(contrastTextColor('#fff')).toBe('#000');
+    expect(contrastTextColor('#fde047')).toBe('#000');
+    expect(contrastTextColor('#000000')).toBe('#fff');
+    expect(contrastTextColor('#1e40af')).toBe('#fff');
+    expect(contrastTextColor('#123456ff')).toBe('#fff');
+    expect(contrastTextColor('rgb(255, 255, 255)')).toBe('#000');
+    expect(contrastTextColor('rgba(10, 20, 30, 0.5)')).toBe('#fff');
+  });
+
+  it('falls back to white for a colour it cannot parse', () => {
+    expect(contrastTextColor('tomato')).toBe('#fff');
+    expect(contrastTextColor('#12')).toBe('#fff');
+  });
+});
+
+describe('tagHalfHeight', () => {
+  it('scales with the axis font size, with a fallback', () => {
+    expect(tagHalfHeight(12)).toBe(9);
+    expect(tagHalfHeight(16)).toBe(12);
+    expect(tagHalfHeight(undefined)).toBe(9);
+    expect(tagHalfHeight(0)).toBe(9);
   });
 });
