@@ -10,6 +10,7 @@ your own adapter. All imports are from `@adrienhobbs/candlekit`.
 - [Understanding the Architecture](#understanding-the-architecture)
 - [Quick Start with Alpaca](#quick-start-with-alpaca)
 - [Using the useBarsData Hook](#using-the-usebarsdata-hook)
+- [Realtime bars (useRealtimeBars)](#realtime-bars-userealtimebars)
 - [Bundled Adapters](#bundled-adapters)
 - [Data Utilities](#data-utilities)
 - [Integration Recipes](#integration-recipes)
@@ -253,6 +254,79 @@ if (error) {
   );
 }
 ```
+
+## Realtime bars (useRealtimeBars)
+
+`useRealtimeBars` folds ticks from your stream into the host's REST bars. Feed every tick through
+`pushTick` from the socket handler; it is stable for the hook's lifetime and accepts one tick or an
+array. The `tick` option is an alternative for simple hosts: pass a new object per tick, bearing in
+mind that React can batch several updates and leave only the latest one for the hook to fold.
+
+```tsx
+import { useEffect } from 'react';
+import { ChartComponent, useRealtimeBars, type OHLCVBar } from '@adrienhobbs/candlekit';
+
+function LiveChart({ history, connection, previousClose }: {
+  history: OHLCVBar[];
+  connection: 'connecting' | 'open' | 'closed';
+  previousClose: number;
+}) {
+  const { bars, live, pushTick } = useRealtimeBars({
+    key: 'AAPL',
+    bars: history,
+    timeframe: '1Min',
+    connection,
+    reference: previousClose,
+    fetchGap: async ({ fromMs, toMs }, { signal }) => {
+      const response = await fetch(`/api/bars?symbol=AAPL&from=${fromMs}&to=${toMs}`, { signal });
+      if (!response.ok) throw new Error(`Gap request failed: ${response.status}`);
+      return response.json();
+    },
+    onGapError: (error) => console.error('Gap backfill failed', error),
+    stallAfterMs: 30_000,
+  });
+
+  useEffect(() => {
+    const socket = new WebSocket('wss://api.example.com/trades/AAPL');
+    socket.onmessage = (event) => {
+      const trade = JSON.parse(event.data);
+      // `key` lets one socket feed several charts; other keys are dropped.
+      pushTick({ key: 'AAPL', price: trade.price, time: trade.time, size: trade.size });
+    };
+    return () => socket.close();
+  }, [pushTick]);
+
+  return <ChartComponent bars={bars} live={live} />;
+}
+```
+
+For the prop-driven alternative, replace the socket effect with
+`useRealtimeBars({ key, bars, timeframe, tick, connection, reference, fetchGap })`. The full working
+example is the **Realtime** demo panel (`src/LiveDemo.tsx`).
+
+Behavior to know about:
+
+- Each bucket keeps its tick high/low, so a wick survives later ticks and a lagging REST refetch.
+  A bucket REST has not returned yet is appended, opening at the previous close. A just-closed bucket
+  keeps its live shape until REST returns a newer bar (up to 30 closed buckets, `MAX_CLOSED`).
+- `1Day` folds regular-session ticks (09:30–16:00 New York) into today's bar and never appends;
+  the next day's bar comes from REST. Supported intraday timeframes are `1Min`, `5Min`, `15Min`,
+  and `1Hour`.
+- Ticks fold as they arrive and publish at most once per animation frame. Ticks older than the last
+  one, or with a non-positive/non-finite price or invalid time, are ignored. A tick with a `key`
+  different from the hook's `key` is also ignored.
+- `live.state` is `connecting` until the first tick after the connection opens, then `live`; after
+  `stallAfterMs` without a tick (default `DEFAULT_STALL_AFTER_MS`, 30 seconds) it is `stalled`, and
+  while the connection is closed it is `disconnected`. `live.price`, `live.reference`, and
+  `live.barCloseAt` feed the chart's live price line and intraday countdown.
+- Gap-fill runs after reconnect (`closed` → `open`) and when a tick lands two or more buckets past
+  the newest bar. One request runs at a time. `fetchGap(range, { signal })` must honour the abort
+  signal; responses for an old key or timeframe are dropped, and at most `MAX_GAP_BARS` (2,000) bars
+  are retained. Failures go to `onGapError` and are retried only on the next gap trigger.
+- The lower-level `foldTick(state, { key, bars, timeframe, tick })` and `mergeLive(bars, state)`
+  functions are pure. Prefer the hook for a stream: direct `foldTick` calls rebuild the returned
+  bars array as they apply live state, while the hook folds into a small tail and publishes once
+  per frame.
 
 ## Bundled Adapters
 

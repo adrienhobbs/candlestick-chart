@@ -9,6 +9,14 @@ Status legend: **▶ Next** · **◷ Deferred** · **○ Backlog**
 
 ---
 
+## ✅ Shipped (0.10.0)
+
+- **First-class realtime bars.** `useRealtimeBars` folds host-pushed ticks into bars (each bucket
+  keeps its extremes; rollovers append; closed buckets keep their live shape until REST catches up),
+  publishes once per frame, tracks stream state, and backfills gaps through a host `fetchGap`.
+  `ChartComponent`'s `live` prop draws the live price line + axis tag and a bar-close countdown.
+  A single appended bar now syncs through `update()` instead of `setData()`.
+
 ## ✅ Shipped (0.9.2)
 
 - **Indicator on/off toggle.** `IndicatorInstance.enabled?: boolean` (absent = enabled, so
@@ -166,28 +174,6 @@ Mostly covered: `markers` (0.5.0), `signposts` and the event rail (0.6.0) draw e
 timestamps, and lane-engine feeds its own (firings, exit-observer fires, excursion extremes).
 What is left is a built-in source of external calendar events (earnings, splits, FOMC), which no
 host has asked for yet.
-
-### First-class realtime price syncing — *leading live-use candidate*
-candlekit already has the plumbing to stream bars — `useBarsData.subscribe`/`onBar`/`onTrade`, the
-`AlpacaBarAdapter` WS + `MockAdapter` ticks, and the incremental last-bar `update()` path. "First-class"
-is the polish that makes a live chart *feel* live:
-
-- **Forming-bar aggregation** — fold ticks into the current (open) bar between closes; roll to a fresh
-  bar at each boundary (needs the chart's timeframe → pairs with *Client-side timeframe aggregation*).
-- **Live price line + axis tag** — a horizontal line at last price with a colored axis label (up/down
-  vs prev close), updated per tick.
-- **Bar-close countdown** — time remaining in the forming bar (small overlay / axis annotation).
-- **Connection state as a prop/callback** — connecting / connected / reconnecting / stalled, so the host
-  can render stream health (mirrors the exec console's WS-health pattern).
-- **Reconnect gap-fill** — on WS reconnect, REST-backfill the bars missed during the gap and dedupe them
-  into the series (the historical fetch path already exists).
-- **rAF-throttled updates** — coalesce bursty ticks to one repaint per frame (never `setData` per tick).
-
-Originally deferred because the workbench is research (historical, not live). The lane-engine
-console's watchlist chart is now a live surface: it folds polled snapshot prices into the last bar
-itself and relies on the `update()` path. That makes this the next candidate once that chart needs
-more than a moving last bar (live price line, bar-close countdown, stream state). Most of the work is
-a `useRealtimeBars` hook + a live-price-line primitive; the adapters are done.
 
 ## ○ Backlog (unranked candidates)
 

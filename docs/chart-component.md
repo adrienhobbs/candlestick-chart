@@ -255,6 +255,8 @@ const bars: OHLCVBar[] = [
 | `height` | `number` | fill parent | Fixed chart height in px. Omit to fill the parent's height (tracked with a ResizeObserver); a parent with no definite height gets 600px |
 | `theme` | `Partial<ChartTheme>` | slate dark | Chart canvas colors — background, grid, axes, candles, volume. See [Theming](./theming.md) |
 | `volumeMode` | `'pane' \| 'overlay'` | `'pane'` | Volume in its own pane under the price pane, or as an overlay along the bottom of the price pane. See [Volume](#volume) |
+| `live` | `LiveState \| null` | `null` | From `useRealtimeBars`. Draws a dashed live price line with axis tag (up/down color against `live.reference`, theme keys `livePriceUpColor` / `livePriceDownColor`), replacing the series' last-value line, and a bar-close countdown under the tag on intraday timeframes |
+| `onLiveStateChange` | `(state: LiveStreamState) => void` | — | Fired when `live.state` changes |
 
 Array props default to stable module-level empty arrays, so omitting one does not re-run
 its effects on every render. Arrays you pass should be memoized for the same reason.
