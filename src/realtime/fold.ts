@@ -95,15 +95,20 @@ export function foldTick(
   const withClosed = closed.reduce(mergeBucket, bars);
   const before = withClosed[withClosed.length - 1];
   // A bucket REST has not returned yet opens at the close of the bar before it.
-  const open = same ? base.open : bucket > before.timestamp ? before.close : tick.price;
+  // One REST already has starts from that bar, so a later refetch that drops it
+  // re-appends the live bucket without losing REST's open, high and low.
+  const covered = !same && bucket === before.timestamp;
+  const open = same ? base.open : covered ? before.open : before.close;
+  const seedHigh = covered ? Math.max(before.high, open) : open;
+  const seedLow = covered ? Math.min(before.low, open) : open;
   const size = tick.size !== undefined && tick.size > 0 ? tick.size : 0;
   const state: LiveFoldState = {
     key,
     timeframe,
     bucket,
     open,
-    high: same ? Math.max(base.high, tick.price) : Math.max(open, tick.price),
-    low: same ? Math.min(base.low, tick.price) : Math.min(open, tick.price),
+    high: same ? Math.max(base.high, tick.price) : Math.max(seedHigh, tick.price),
+    low: same ? Math.min(base.low, tick.price) : Math.min(seedLow, tick.price),
     close: tick.price,
     volume: (same ? base.volume : 0) + size,
     lastTickMs: ms,

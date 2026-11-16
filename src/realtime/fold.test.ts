@@ -58,7 +58,8 @@ describe('foldTick', () => {
       { price: 100.6, s: 71, bars: wider },
     ]);
     expect(lastBar(afterLagging).high).toBe(100.9);
-    expect(lastBar(afterLagging).low).toBe(99.9);
+    // The live bucket was seeded from REST's first view (low 99.8), so a lagging refetch cannot narrow it.
+    expect(lastBar(afterLagging).low).toBe(99.8);
     expect({ high: lastBar(afterWider).high, low: lastBar(afterWider).low }).toEqual({ high: 101.2, low: 99.1 });
   });
 
@@ -210,5 +211,48 @@ describe('mergeLive', () => {
     const [spike] = fold([{ price: 100.9, s: 10 }]);
     expect(lastBar({ bars: mergeLive([...REST], spike.state) }).high).toBe(100.9);
     expect(mergeLive(REST, null)).toBe(REST);
+  });
+});
+
+describe('foldTick seeding and timeframes', () => {
+  it("a live bucket starts from REST's bar, so a shorter refetch keeps its open and extremes", () => {
+    const B: OHLCVBar = { timestamp: T0, open: 100.0, high: 100.4, low: 99.8, close: 100.2, volume: 100 };
+    const [, shorter] = fold([
+      { price: 100.2, s: 10, bars: [REST[0], B] },
+      { price: 100.25, s: 11, bars: [REST[0]] },
+    ]);
+    const b = lastBar(shorter);
+    expect(b.timestamp).toBe(T0);
+    expect({ open: b.open, high: b.high, low: b.low, close: b.close }).toEqual({ open: 100.0, high: 100.4, low: 99.8, close: 100.25 });
+  });
+
+  it('buckets 1Min ticks by the minute', () => {
+    const [out] = fold([{ price: 100.5, s: 90, timeframe: '1Min' }]);
+    expect(lastBar(out).timestamp).toBe(T0 + 60_000);
+    expect(out.bars).toHaveLength(REST.length + 1);
+  });
+
+  it('buckets 1Hour ticks by the hour', () => {
+    const hour = Date.parse('2026-10-30T17:00:00Z');
+    const bars: OHLCVBar[] = [{ timestamp: hour, open: 100, high: 100.4, low: 99.8, close: 100.2, volume: 1 }];
+    const out = foldTick(null, { key: 'XYZ', bars, timeframe: '1Hour', tick: { price: 101, time: '2026-10-30T17:25:00Z' } });
+    expect(out.bars).toHaveLength(1);
+    expect(lastBar(out)).toMatchObject({ timestamp: hour, high: 101, close: 101 });
+  });
+
+  it('daily bars ignore a pre-market tick', () => {
+    const day = Date.parse('2026-10-30T04:00:00Z');
+    const bars: OHLCVBar[] = [{ timestamp: day, open: 100, high: 100.4, low: 99.8, close: 100.2, volume: 1 }];
+    const out = foldTick(null, { key: 'XYZ', bars, timeframe: '1Day', tick: { price: 103, time: '2026-10-30T13:00:00Z' } }); // 09:00 ET
+    expect(out.bars).toBe(bars);
+    expect(out.state).toBeNull();
+  });
+
+  it('with no REST bars, returns the empty bars and the previous state', () => {
+    const [first] = fold([{ price: 100.9, s: 10 }]);
+    const empty: OHLCVBar[] = [];
+    const out = foldTick(first.state, { key: 'XYZ', bars: empty, timeframe: '5Min', tick: { price: 101, time: at(11) } });
+    expect(out.bars).toBe(empty);
+    expect(out.state).toBe(first.state);
   });
 });
