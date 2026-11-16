@@ -652,5 +652,92 @@ describe('useRealtimeBars', () => {
       advance(5);
       expect(h.result.current.live?.state).toBe('stalled');
     });
+
+    it('folds 1,000 ticks quickly on a long history with many gap bars', async () => {
+      const hostBars: OHLCVBar[] = Array.from({ length: 5_000 }, (_, i) => bar(-300 * (4_999 - i), 100));
+      const fetchGap = vi.fn(() =>
+        Promise.resolve(Array.from({ length: 2_000 }, (_, i) => bar(300 * (i + 1), 100))),
+      );
+      const h = setup(opts({ bars: hostBars, fetchGap }));
+      const formingS = 300 * 2_001;
+      act(() => h.result.current.pushTick(tick(100, formingS + 1)));
+      await settle();
+      flushFrame();
+      expect(h.result.current.bars).toHaveLength(5_000 + 2_000 + 1);
+      const push = h.result.current.pushTick;
+      const ticks = Array.from({ length: 1_000 }, (_, i) => tick(100 + (i % 7) / 10, formingS + 2 + i / 1_000));
+      const started = performance.now();
+      for (const t of ticks) push(t);
+      const elapsed = performance.now() - started;
+      console.info(`[perf] 1,000 pushTick calls on 5,000 host + 2,000 gap bars: ${elapsed.toFixed(2)} ms`);
+      flushFrame();
+      expect(lastOf(h.result.current.bars).high).toBe(100.6);
+      expect(elapsed).toBeLessThan(15);
+    });
+
+    it('stays connecting until the first tick after the stream opens', () => {
+      const h = setup(opts({ connection: 'connecting' }));
+      act(() => h.result.current.pushTick(tick(100.3, 10)));
+      flushFrame();
+      expect(h.result.current.live).toMatchObject({ price: 100.3, state: 'connecting' });
+      h.rerender(opts({ connection: 'open' }));
+      expect(h.result.current.live?.state).toBe('connecting');
+      act(() => h.result.current.pushTick(tick(100.4, 11)));
+      flushFrame();
+      expect(h.result.current.live?.state).toBe('live');
+      h.rerender(opts({ connection: 'closed' }));
+      act(() => h.result.current.pushTick(tick(100.5, 12)));
+      flushFrame();
+      h.rerender(opts({ connection: 'open' }));
+      expect(h.result.current.live?.state).toBe('connecting');
+    });
+
+    it('drops a late tick for another key', () => {
+      const h = setup(opts());
+      act(() => h.result.current.pushTick({ ...tick(100.4, 10), key: 'XYZ' }));
+      flushFrame();
+      h.rerender(opts({ key: 'ABC' }));
+      act(() => h.result.current.pushTick({ ...tick(250, 11), key: 'XYZ' }));
+      flushFrame();
+      expect(h.result.current.live).toBeNull();
+      expect(h.result.current.bars).toBe(REST);
+      act(() => h.result.current.pushTick([{ ...tick(101, 12), key: 'ABC' }, tick(101.2, 13)]));
+      flushFrame();
+      expect(h.result.current.live?.price).toBe(101.2);
+    });
+
+    it('keeps the live price across a timeframe change', () => {
+      const h = setup(opts());
+      act(() => h.result.current.pushTick(tick(100.7, 10, 5)));
+      flushFrame();
+      h.rerender(opts({ timeframe: '1Min' }));
+      flushFrame();
+      expect(h.result.current.live).toMatchObject({ price: 100.7, barCloseAt: T0 + 60_000 });
+      expect(lastOf(h.result.current.bars)).toMatchObject({ timestamp: T0, close: 100.7, volume: 6 });
+    });
+  });
+
+  it('drops a tick prop for another key', () => {
+    const h = setup(opts({ key: 'ABC', tick: { ...tick(250, 10), key: 'XYZ' } }));
+    flushFrame();
+    expect(h.result.current.live).toBeNull();
+  });
+
+  it('refolds the tick prop once after a timeframe change', () => {
+    const t = tick(100.7, 10, 5);
+    const h = setup(opts({ tick: t }));
+    flushFrame();
+    h.rerender(opts({ timeframe: '1Min', tick: t }));
+    flushFrame();
+    expect(lastOf(h.result.current.bars)).toMatchObject({ timestamp: T0, close: 100.7, volume: 6 });
+  });
+
+  it('marks the stream live when the reopen render also brings a tick', () => {
+    const h = setup(opts({ tick: tick(100.3, 10) }));
+    flushFrame();
+    h.rerender(opts({ connection: 'closed', tick: tick(100.3, 10) }));
+    h.rerender(opts({ connection: 'open', tick: tick(100.4, 11) }));
+    flushFrame();
+    expect(h.result.current.live?.state).toBe('live');
   });
 });

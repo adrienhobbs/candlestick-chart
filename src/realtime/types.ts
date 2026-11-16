@@ -4,6 +4,8 @@ export interface RealtimeTick {
   time: number | string;
   /** Traded size; adds to the forming bar's volume when present. */
   size?: number;
+  /** The series (symbol) this tick is for. When set, a tick for another series is dropped. */
+  key?: string;
 }
 
 /** A bucket's live open/high/low/close/volume as the stream saw it. */

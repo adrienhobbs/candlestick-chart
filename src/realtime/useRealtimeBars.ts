@@ -85,6 +85,8 @@ interface Series {
   lastTickAt: number | null;
   tickSinceOpen: boolean;
   seenTick: RealtimeTick | null;
+  /** The newest tick folded; a timeframe change refolds it into the new series. */
+  lastTick: RealtimeTick | null;
   published: Published;
   inflight: AbortController | null;
   /** Ranges asked for while a request was in flight, as one span. */
@@ -110,6 +112,7 @@ function newSeries(key: string | null, timeframe: string, seenTick: RealtimeTick
     lastTickAt: null,
     tickSinceOpen: false,
     seenTick,
+    lastTick: null,
     published: NOTHING_PUBLISHED,
     inflight: null,
     pending: null,
@@ -121,8 +124,6 @@ function newSeries(key: string | null, timeframe: string, seenTick: RealtimeTick
 const isTickList = (input: RealtimeTick | readonly RealtimeTick[]): input is readonly RealtimeTick[] =>
   Array.isArray(input);
 
-const lastTimestamp = (bars: OHLCVBar[]) => (bars.length ? bars[bars.length - 1].timestamp : null);
-
 const unionRange = (a: GapRange | null, b: GapRange): GapRange =>
   a === null ? b : { fromMs: Math.min(a.fromMs, b.fromMs), toMs: Math.max(a.toMs, b.toMs) };
 
@@ -132,8 +133,15 @@ function liveBucketAt(state: LiveFoldState | null, bucket: number): LiveBucketBa
   return state.closed.find((c) => c.bucket === bucket) ?? null;
 }
 
+/** The last bar of withGapBars(hostBars, gapBars), without building it. */
+function lastBaseBar(hostBars: OHLCVBar[], gapBars: OHLCVBar[]): OHLCVBar | null {
+  const host = hostBars.length ? hostBars[hostBars.length - 1] : null;
+  const gap = gapBars.length ? gapBars[gapBars.length - 1] : null;
+  return gap !== null && (host === null || gap.timestamp > host.timestamp) ? gap : host;
+}
+
 function newestKnown(series: Series, hostBars: OHLCVBar[]): number | null {
-  const rest = lastTimestamp(withGapBars(hostBars, series.gapBars));
+  const rest = lastBaseBar(hostBars, series.gapBars)?.timestamp ?? null;
   const forming = series.fold?.bucket ?? null;
   if (rest === null) return forming;
   return forming === null ? rest : Math.max(rest, forming);
@@ -175,7 +183,13 @@ function applyGapResponse(series: Series, fetched: OHLCVBar[], requestedAt: numb
  * Folds streamed ticks into `bars` and describes the live price for the chart's
  * `live` prop. Streaming hosts should feed ticks through the returned `pushTick`;
  * the `tick` option folds only the tick present at each render, so batched updates
- * can lose intermediate ticks. Ticks fold into the series state as they arrive (so a burst loses no
+ * can lose intermediate ticks.
+ *
+ * In a hidden tab, where animation frames pause, `live.state` can change before
+ * `live.price` and `bars` do: the state reads the live series, while price and bars
+ * come from the last frame's snapshot. A child's layout effect that calls `pushTick`
+ * during the commit that changes `key` runs before this hook's series change, so its
+ * tick may land in the old series (pass `tick.key` to have it dropped instead). Ticks fold into the series state as they arrive (so a burst loses no
  * extreme) and the output is published at most once per animation frame, from a
  * snapshot taken in that frame, so bars and price always come from the same moment.
  */
@@ -243,20 +257,6 @@ export function useRealtimeBars(options: UseRealtimeBarsOptions): UseRealtimeBar
     stallTimerRef.current = null;
   }, []);
 
-  // Series changes happen in a layout effect, not during render, so a render React
-  // discards cannot reset anything. Until it runs, the render shows an empty series.
-  useLayoutEffect(() => {
-    const prev = seriesRef.current;
-    if (prev !== null && prev.key === key && prev.timeframe === timeframe) return;
-    prev?.inflight?.abort();
-    // The tick passed alongside a new key is the old key's last tick; a timeframe
-    // change on the same key refolds it into the new buckets.
-    const seen = prev !== null && prev.key !== key ? tick : null;
-    const dropped = everOpenRef.current && latestRef.current.connection !== 'open';
-    seriesRef.current = newSeries(key, timeframe, seen, dropped);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- only a series change reads the tick
-  }, [key, timeframe]);
-
   useLayoutEffect(() => {
     mountedRef.current = true;
     armStall();
@@ -315,19 +315,25 @@ export function useRealtimeBars(options: UseRealtimeBarsOptions): UseRealtimeBar
       const key = s.key;
       if (key === null) return;
       let folded = false;
+      const { bars: hostBars, connection: conn } = latestRef.current;
       for (const t of ticks) {
         if (typeof t !== 'object' || t === null) continue;
+        if (t.key !== undefined && t.key !== key) continue;
         const ms = tickTimeMs(t.time);
         // Same rejects as foldTick, so a price it would not fold never shows as the live price.
         if (!Number.isFinite(t.price) || t.price <= 0 || !Number.isFinite(ms)) continue;
         if (s.lastTickMs !== null && ms < s.lastTickMs) continue;
         s.lastTickMs = ms;
+        s.lastTick = t;
         s.price = t.price;
         s.lastTickAt = Date.now();
-        s.tickSinceOpen = true;
-        const hostBars = latestRef.current.bars;
+        // A tick from before the stream opened does not make it live.
+        if (conn === 'open') s.tickSinceOpen = true;
         const gap = tickGap(newestKnown(s, hostBars), s.timeframe, ms);
-        s.fold = foldTick(s.fold, { key, bars: withGapBars(hostBars, s.gapBars), timeframe: s.timeframe, tick: t }).state;
+        // foldTick's state depends only on the last bar, so the full history is not
+        // built per tick; its returned bars are not used.
+        const tail = lastBaseBar(hostBars, s.gapBars);
+        s.fold = foldTick(s.fold, { key, bars: tail === null ? [] : [tail], timeframe: s.timeframe, tick: t }).state;
         if (gap) requestGap(s, gap);
         folded = true;
       }
@@ -339,6 +345,25 @@ export function useRealtimeBars(options: UseRealtimeBarsOptions): UseRealtimeBar
     },
     [requestGap, scheduleFrame, armStall],
   );
+
+  // Series changes happen in a layout effect, not during render, so a render React
+  // discards cannot reset anything. Until it runs, the render shows an empty series.
+  useLayoutEffect(() => {
+    const prev = seriesRef.current;
+    if (prev !== null && prev.key === key && prev.timeframe === timeframe) return;
+    prev?.inflight?.abort();
+    const sameKey = prev !== null && prev.key === key;
+    // The tick passed alongside a new key is the old key's last tick, so it is marked
+    // seen. On a timeframe change the previous series' last tick is refolded into the
+    // new buckets, and marked seen so the tick prop does not fold it a second time.
+    const carried = sameKey ? prev.lastTick : null;
+    const seen = prev === null ? null : sameKey ? carried : tick;
+    const dropped = everOpenRef.current && latestRef.current.connection !== 'open';
+    const next = newSeries(key, timeframe, seen, dropped);
+    seriesRef.current = next;
+    if (carried !== null) ingest(next, [carried]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only a series change reads the tick
+  }, [key, timeframe]);
 
   const pushTick = useCallback(
     (input: RealtimeTick | readonly RealtimeTick[]) => {
