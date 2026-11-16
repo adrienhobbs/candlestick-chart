@@ -51,3 +51,35 @@ describe('withGapBars', () => {
     expect(withGapBars([], [bar(T0)])).toHaveLength(1);
   });
 });
+
+describe('tickGap edges', () => {
+  it('floors an unaligned newest stamp before comparing, keeping fromMs as given', () => {
+    expect(tickGap(T0 + 120_000, '5Min', T0 + 600_000)).toEqual({ fromMs: T0 + 120_000, toMs: T0 + 600_000 });
+  });
+  it('is a range exactly on the two-bucket boundary', () => {
+    expect(tickGap(T0, '5Min', T0 + 600_000)).toEqual({ fromMs: T0, toMs: T0 + 600_000 });
+    expect(tickGap(T0, '5Min', T0 + 599_999)).toBeNull();
+  });
+  it('is null for a tick older than the newest bar', () => {
+    expect(tickGap(T0, '5Min', T0 - 600_000)).toBeNull();
+  });
+  it('works at 1Min', () => {
+    expect(tickGap(T0, '1Min', T0 + 120_000)).toEqual({ fromMs: T0, toMs: T0 + 120_000 });
+    expect(tickGap(T0, '1Min', T0 + 119_999)).toBeNull();
+    expect(currentBucket('1Min', T0 + 59_999)).toBe(T0);
+  });
+  it('works at 1Hour, including bars stamped at :30', () => {
+    const H = Date.parse('2026-10-30T13:00:00Z');
+    const H30 = Date.parse('2026-10-30T13:30:00Z');
+    expect(currentBucket('1Hour', H + 59 * 60_000)).toBe(H);
+    expect(tickGap(H30, '1Hour', H + 2 * 3_600_000)).toEqual({ fromMs: H30, toMs: H + 2 * 3_600_000 });
+    expect(tickGap(H30, '1Hour', H + 2 * 3_600_000 - 1)).toBeNull();
+  });
+});
+
+describe('normalizeBars edges', () => {
+  it('drops bars with a NaN timestamp and handles an empty list', () => {
+    expect(normalizeBars([bar(NaN), bar(T0)]).map((b) => b.timestamp)).toEqual([T0]);
+    expect(normalizeBars([])).toEqual([]);
+  });
+});

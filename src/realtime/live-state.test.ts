@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { deriveStreamState } from './live-state';
+import { DEFAULT_STALL_AFTER_MS, deriveStreamState } from './live-state';
 
 const base = { connection: 'open' as const, tickSinceOpen: true, lastTickAt: 1_000, now: 2_000, stallAfterMs: 30_000 };
 
@@ -11,5 +11,15 @@ describe('deriveStreamState', () => {
     expect(deriveStreamState({ ...base, lastTickAt: null })).toBe('connecting');
     expect(deriveStreamState(base)).toBe('live');
     expect(deriveStreamState({ ...base, now: 31_000 })).toBe('stalled');
+  });
+});
+
+describe('deriveStreamState stall threshold', () => {
+  it('falls back to the default for a non-finite or non-positive stallAfterMs', () => {
+    for (const stallAfterMs of [NaN, Infinity, 0, -5]) {
+      expect(deriveStreamState({ ...base, stallAfterMs, now: 1_000 + DEFAULT_STALL_AFTER_MS - 1 })).toBe('live');
+      expect(deriveStreamState({ ...base, stallAfterMs, now: 1_000 + DEFAULT_STALL_AFTER_MS })).toBe('stalled');
+    }
+    expect(DEFAULT_STALL_AFTER_MS).toBe(30_000);
   });
 });

@@ -46,6 +46,12 @@ export interface LiveState {
   state: LiveStreamState;
 }
 
+/**
+ * A span of bars to backfill. For intraday timeframes `fromMs` and `toMs` are bucket
+ * starts the hook already has, both inclusive; bars returned at either end are
+ * harmless because withGapBars keeps only bars newer than the host's. For other
+ * timeframes (e.g. a 1Day reconnect) `toMs` may be the raw instant.
+ */
 export interface GapRange {
   fromMs: number;
   toMs: number;
