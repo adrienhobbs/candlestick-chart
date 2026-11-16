@@ -3,7 +3,15 @@ import type { OHLCVBar } from '../types/chart';
 import { foldTick, intradayBucketMs, mergeLive, tickTimeMs } from './fold';
 import { currentBucket, mergeGapBars, normalizeBars, tickGap, withGapBars } from './gap';
 import { DEFAULT_STALL_AFTER_MS, deriveStreamState } from './live-state';
-import type { GapRange, LiveBucketBar, LiveConnection, LiveFoldState, LiveState, RealtimeTick } from './types';
+import type {
+  GapRange,
+  LiveBucketBar,
+  LiveConnection,
+  LiveFoldState,
+  LiveState,
+  LiveStreamState,
+  RealtimeTick,
+} from './types';
 
 export interface GapFetchOptions {
   /** Aborted once the response would be dropped: the key or timeframe changed, or the hook unmounted. */
@@ -17,11 +25,13 @@ export interface UseRealtimeBarsOptions {
   bars: OHLCVBar[];
   timeframe: string;
   /**
-   * The latest tick. Pass a new object for each tick; the same object is not folded twice.
-   * The tick passed in the render that changes `key` is taken to belong to the previous key
-   * and is not folded.
+   * The latest tick, for simple hosts; streaming hosts should call `pushTick` instead.
+   * Only the tick present at each render is folded, so when React batches several tick
+   * updates into one render the intermediate ticks (and their highs and lows) are lost.
+   * Pass a new object for each tick; the same object is not folded twice. The tick passed
+   * in the render that changes `key` is taken to belong to the previous key and is not folded.
    */
-  tick: RealtimeTick | null;
+  tick?: RealtimeTick | null;
   connection: LiveConnection;
   /** Up/down color reference (e.g. previous close). Defaults to the last bar's open. */
   reference?: number | null;
@@ -39,7 +49,21 @@ export interface UseRealtimeBarsOptions {
 export interface UseRealtimeBarsResult {
   bars: OHLCVBar[];
   live: LiveState | null;
+  /**
+   * Folds one tick, or several in order, into the current series right away and
+   * schedules one publish per animation frame. The preferred entry point for streaming
+   * hosts: call it from the socket handler, outside React, for every tick. The same
+   * function for the hook's lifetime. Ignored while `key` is null and after unmount.
+   */
+  pushTick: (tick: RealtimeTick | readonly RealtimeTick[]) => void;
 }
+
+/**
+ * Gap bars kept per series. Every session open after a night or weekend backfills a
+ * gap, so a chart left open for weeks would otherwise grow them without bound; the
+ * host's REST history covers anything older.
+ */
+export const MAX_GAP_BARS = 2000;
 
 /** What one animation frame showed; renders between frames keep showing it. */
 interface Published {
@@ -94,6 +118,9 @@ function newSeries(key: string | null, timeframe: string, seenTick: RealtimeTick
   };
 }
 
+const isTickList = (input: RealtimeTick | readonly RealtimeTick[]): input is readonly RealtimeTick[] =>
+  Array.isArray(input);
+
 const lastTimestamp = (bars: OHLCVBar[]) => (bars.length ? bars[bars.length - 1].timestamp : null);
 
 const unionRange = (a: GapRange | null, b: GapRange): GapRange =>
@@ -136,7 +163,8 @@ function applyGapResponse(series: Series, fetched: OHLCVBar[], requestedAt: numb
       volume: Math.max(b.volume, live.volume),
     };
   });
-  series.gapBars = mergeGapBars(series.gapBars, bars);
+  const gapBars = mergeGapBars(series.gapBars, bars);
+  series.gapBars = gapBars.length > MAX_GAP_BARS ? gapBars.slice(-MAX_GAP_BARS) : gapBars;
   const fold = series.fold;
   if (fold !== null && fold.closed.some((c) => finalBuckets.has(c.bucket))) {
     series.fold = { ...fold, closed: fold.closed.filter((c) => !finalBuckets.has(c.bucket)) };
@@ -144,8 +172,10 @@ function applyGapResponse(series: Series, fetched: OHLCVBar[], requestedAt: numb
 }
 
 /**
- * Folds host-pushed ticks into `bars` and describes the live price for the chart's
- * `live` prop. Ticks fold into the series state as they arrive (so a burst loses no
+ * Folds streamed ticks into `bars` and describes the live price for the chart's
+ * `live` prop. Streaming hosts should feed ticks through the returned `pushTick`;
+ * the `tick` option folds only the tick present at each render, so batched updates
+ * can lose intermediate ticks. Ticks fold into the series state as they arrive (so a burst loses no
  * extreme) and the output is published at most once per animation frame, from a
  * snapshot taken in that frame, so bars and price always come from the same moment.
  */
@@ -154,7 +184,7 @@ export function useRealtimeBars(options: UseRealtimeBarsOptions): UseRealtimeBar
     key,
     bars,
     timeframe,
-    tick,
+    tick = null,
     connection,
     reference = null,
     fetchGap,
@@ -162,18 +192,56 @@ export function useRealtimeBars(options: UseRealtimeBarsOptions): UseRealtimeBar
     stallAfterMs = DEFAULT_STALL_AFTER_MS,
   } = options;
 
-  const [publishTick, setPublishTick] = useState(0);
-  const [clock, setClock] = useState(0);
+  const [, setPublishTick] = useState(0);
+  const [, setClock] = useState(0);
+  const stallMs = Number.isFinite(stallAfterMs) && stallAfterMs > 0 ? stallAfterMs : DEFAULT_STALL_AFTER_MS;
 
   const seriesRef = useRef<Series | null>(null);
-  const latestRef = useRef({ bars, fetchGap, onGapError, connection });
+  const latestRef = useRef({ bars, fetchGap, onGapError, connection, stallMs });
   const frameIdRef = useRef<number | null>(null);
+  const stallTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mountedRef = useRef(false);
   const everOpenRef = useRef(false);
+  // The stream state the last committed render showed.
+  const shownStreamRef = useRef<LiveStreamState>('connecting');
 
   useLayoutEffect(() => {
-    latestRef.current = { bars, fetchGap, onGapError, connection };
+    latestRef.current = { bars, fetchGap, onGapError, connection, stallMs };
   });
+
+  const scheduleFrame = useCallback(() => {
+    if (frameIdRef.current !== null) return;
+    frameIdRef.current = requestAnimationFrame(() => {
+      frameIdRef.current = null;
+      const s = seriesRef.current;
+      if (!mountedRef.current || s === null) return;
+      s.published = { fold: s.fold, gapBars: s.gapBars, price: s.price, tickMs: s.lastTickMs };
+      setPublishTick((n) => n + 1);
+    });
+  }, []);
+
+  // One timer, re-armed from the latest tick's arrival time each time it fires, so
+  // ticks need not render and a timer that fires a little early just waits again.
+  const armStall = useCallback(function arm(): void {
+    if (stallTimerRef.current !== null || !mountedRef.current) return;
+    const s = seriesRef.current;
+    const { connection: conn, stallMs: after } = latestRef.current;
+    if (s === null || s.lastTickAt === null || conn !== 'open') return;
+    const remaining = s.lastTickAt + after - Date.now();
+    if (remaining > 0) {
+      stallTimerRef.current = setTimeout(() => {
+        stallTimerRef.current = null;
+        arm();
+      }, remaining);
+    } else if (shownStreamRef.current === 'live') {
+      setClock((c) => c + 1);
+    }
+  }, []);
+
+  const clearStall = useCallback(() => {
+    if (stallTimerRef.current !== null) clearTimeout(stallTimerRef.current);
+    stallTimerRef.current = null;
+  }, []);
 
   // Series changes happen in a layout effect, not during render, so a render React
   // discards cannot reset anything. Until it runs, the render shows an empty series.
@@ -189,27 +257,18 @@ export function useRealtimeBars(options: UseRealtimeBarsOptions): UseRealtimeBar
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only a series change reads the tick
   }, [key, timeframe]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     mountedRef.current = true;
+    armStall();
     return () => {
       mountedRef.current = false;
+      clearStall();
       // StrictMode remounts synchronously, so this only aborts on a real unmount.
       queueMicrotask(() => {
         if (!mountedRef.current) seriesRef.current?.inflight?.abort();
       });
     };
-  }, []);
-
-  const scheduleFrame = useCallback(() => {
-    if (frameIdRef.current !== null) return;
-    frameIdRef.current = requestAnimationFrame(() => {
-      frameIdRef.current = null;
-      const s = seriesRef.current;
-      if (!mountedRef.current || s === null) return;
-      s.published = { fold: s.fold, gapBars: s.gapBars, price: s.price, tickMs: s.lastTickMs };
-      setPublishTick((n) => n + 1);
-    });
-  }, []);
+  }, [armStall, clearStall]);
 
   const requestGap = useCallback(
     function request(s: Series, range: GapRange): void {
@@ -250,25 +309,53 @@ export function useRealtimeBars(options: UseRealtimeBarsOptions): UseRealtimeBar
     [scheduleFrame],
   );
 
+  /** The one fold path for both the tick prop and pushTick. */
+  const ingest = useCallback(
+    (s: Series, ticks: readonly RealtimeTick[]): void => {
+      const key = s.key;
+      if (key === null) return;
+      let folded = false;
+      for (const t of ticks) {
+        if (typeof t !== 'object' || t === null) continue;
+        const ms = tickTimeMs(t.time);
+        // Same rejects as foldTick, so a price it would not fold never shows as the live price.
+        if (!Number.isFinite(t.price) || t.price <= 0 || !Number.isFinite(ms)) continue;
+        if (s.lastTickMs !== null && ms < s.lastTickMs) continue;
+        s.lastTickMs = ms;
+        s.price = t.price;
+        s.lastTickAt = Date.now();
+        s.tickSinceOpen = true;
+        const hostBars = latestRef.current.bars;
+        const gap = tickGap(newestKnown(s, hostBars), s.timeframe, ms);
+        s.fold = foldTick(s.fold, { key, bars: withGapBars(hostBars, s.gapBars), timeframe: s.timeframe, tick: t }).state;
+        if (gap) requestGap(s, gap);
+        folded = true;
+      }
+      if (!folded) return;
+      scheduleFrame();
+      armStall();
+      // Frames may be paused (hidden tab), so a stall that just ended needs its own render.
+      if (shownStreamRef.current === 'stalled') setClock((c) => c + 1);
+    },
+    [requestGap, scheduleFrame, armStall],
+  );
+
+  const pushTick = useCallback(
+    (input: RealtimeTick | readonly RealtimeTick[]) => {
+      const s = seriesRef.current;
+      if (!mountedRef.current || s === null) return;
+      ingest(s, isTickList(input) ? input : [input]);
+    },
+    [ingest],
+  );
+
   useEffect(() => {
     const s = seriesRef.current;
     if (key === null || tick === null || s === null || s.key !== key || s.timeframe !== timeframe) return;
     if (tick === s.seenTick) return;
     s.seenTick = tick;
-    const ms = tickTimeMs(tick.time);
-    // Same rejects as foldTick, so a price it would not fold never shows as the live price.
-    if (!Number.isFinite(tick.price) || tick.price <= 0 || !Number.isFinite(ms)) return;
-    if (s.lastTickMs !== null && ms < s.lastTickMs) return;
-    s.lastTickMs = ms;
-    s.price = tick.price;
-    s.lastTickAt = Date.now();
-    s.tickSinceOpen = true;
-    const hostBars = latestRef.current.bars;
-    const gap = tickGap(newestKnown(s, hostBars), timeframe, ms);
-    s.fold = foldTick(s.fold, { key, bars: withGapBars(hostBars, s.gapBars), timeframe, tick }).state;
-    if (gap) requestGap(s, gap);
-    scheduleFrame();
-  }, [tick, key, timeframe, requestGap, scheduleFrame]);
+    ingest(s, [tick]);
+  }, [tick, key, timeframe, ingest]);
 
   useEffect(() => {
     const s = seriesRef.current;
@@ -291,14 +378,6 @@ export function useRealtimeBars(options: UseRealtimeBarsOptions): UseRealtimeBar
     requestGap(s, { fromMs, toMs: Math.max(fromMs, currentBucket(timeframe, Date.now())) });
   }, [connection, key, timeframe, requestGap]);
 
-  // Gap bars the host now has are dead weight: withGapBars would never show them.
-  useEffect(() => {
-    const s = seriesRef.current;
-    const lastTs = lastTimestamp(bars);
-    if (s === null || lastTs === null || s.gapBars.length === 0) return;
-    if (s.gapBars[0].timestamp <= lastTs) s.gapBars = s.gapBars.filter((b) => b.timestamp > lastTs);
-  }, [bars]);
-
   const current = seriesRef.current;
   const view: SeriesView = current !== null && current.key === key && current.timeframe === timeframe ? current : EMPTY_VIEW;
   const { published } = view;
@@ -308,7 +387,6 @@ export function useRealtimeBars(options: UseRealtimeBarsOptions): UseRealtimeBar
     [bars, key, published],
   );
 
-  const stallMs = Number.isFinite(stallAfterMs) && stallAfterMs > 0 ? stallAfterMs : DEFAULT_STALL_AFTER_MS;
   const stream = deriveStreamState({
     connection,
     tickSinceOpen: view.tickSinceOpen,
@@ -317,22 +395,15 @@ export function useRealtimeBars(options: UseRealtimeBarsOptions): UseRealtimeBar
     stallAfterMs: stallMs,
   });
 
-  // Re-checks the stall deadline from the latest tick's arrival time whenever the
-  // clock fires or a tick arrives, so neither paused frames nor a timer that fires a
-  // little early can leave the state stuck at `live`.
+  useLayoutEffect(() => {
+    shownStreamRef.current = stream;
+  });
+
+  // A new connection state, threshold or series re-times the stall check.
   useEffect(() => {
-    const at = view.lastTickAt;
-    if (connection !== 'open' || !view.tickSinceOpen || at === null) return;
-    const remaining = at + stallMs - Date.now();
-    const due: typeof stream = remaining > 0 ? 'live' : 'stalled';
-    if (due !== stream) {
-      setClock((c) => c + 1);
-      return;
-    }
-    if (due === 'stalled') return;
-    const id = setTimeout(() => setClock((c) => c + 1), remaining);
-    return () => clearTimeout(id);
-  }, [view, tick, publishTick, clock, connection, stallMs, stream]);
+    clearStall();
+    armStall();
+  }, [connection, stallMs, view, armStall, clearStall]);
 
   const { price, tickMs } = key === null ? NOTHING_PUBLISHED : published;
   const size = intradayBucketMs(timeframe);
@@ -346,5 +417,5 @@ export function useRealtimeBars(options: UseRealtimeBarsOptions): UseRealtimeBar
         : { price, reference: referencePrice, barCloseAt, state: stream },
     [price, referencePrice, barCloseAt, stream],
   );
-  return useMemo(() => ({ bars: merged, live }), [merged, live]);
+  return useMemo(() => ({ bars: merged, live, pushTick }), [merged, live, pushTick]);
 }

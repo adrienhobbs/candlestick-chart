@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { StrictMode, createElement, type ReactNode } from 'react';
 import type { OHLCVBar } from '../types/chart';
-import { useRealtimeBars, type GapFetchOptions, type UseRealtimeBarsOptions } from './useRealtimeBars';
+import { MAX_GAP_BARS, useRealtimeBars, type GapFetchOptions, type UseRealtimeBarsOptions } from './useRealtimeBars';
 import type { GapRange, RealtimeTick } from './types';
 
 const T0 = Date.parse('2026-10-30T16:25:00Z');
@@ -364,7 +364,7 @@ describe('useRealtimeBars', () => {
     expect(out[3].close).toBe(60);
   });
 
-  it('forgets gap bars once the host has its own bars for them', async () => {
+  it('keeps gap bars visible after a later, shorter REST refetch', async () => {
     const { fetchGap, calls } = controlledFetch();
     const h = setup(opts({ fetchGap }));
     h.rerender(opts({ fetchGap, tick: tick(100.6, 901) }));
@@ -374,7 +374,22 @@ describe('useRealtimeBars', () => {
     h.rerender(opts({ fetchGap, bars: [...REST, bar(300, 50), bar(600, 60)], tick: tick(100.6, 901) }));
     h.rerender(opts({ fetchGap, bars: REST, tick: tick(100.6, 902) }));
     flushFrame();
-    expect(h.result.current.bars.map((b) => b.timestamp)).toEqual([T0 - 300_000, T0, T0 + 900_000]);
+    const out = h.result.current.bars;
+    expect(out.map((b) => b.timestamp)).toEqual([T0 - 300_000, T0, T0 + 300_000, T0 + 600_000, T0 + 900_000]);
+    expect(out[2].close).toBe(1);
+  });
+
+  it(`keeps only the newest ${MAX_GAP_BARS} gap bars`, async () => {
+    const { fetchGap, calls } = controlledFetch();
+    const h = setup(opts({ fetchGap }));
+    const count = MAX_GAP_BARS + 5;
+    h.rerender(opts({ fetchGap, tick: tick(100.6, 300 * (count + 2) + 1) }));
+    calls[0].resolve(Array.from({ length: count }, (_, i) => bar(300 * (i + 1), 100)));
+    await settle();
+    flushFrame();
+    const out = h.result.current.bars;
+    expect(out).toHaveLength(REST.length + MAX_GAP_BARS + 1);
+    expect(out[REST.length].timestamp).toBe(T0 + 300_000 * 6);
   });
 
   it('drops a gap response that arrives after a key change, and aborts its request', async () => {
@@ -514,5 +529,128 @@ describe('useRealtimeBars', () => {
     flushFrame();
     expect(h.result.current.live?.price).toBe(100.5);
     expect(lastOf(h.result.current.bars).close).toBe(100.5);
+  });
+
+  describe('pushTick', () => {
+    it('keeps every tick of a batched host update', () => {
+      const h = setup(opts());
+      act(() => {
+        h.result.current.pushTick(tick(103, 20));
+        h.result.current.pushTick(tick(100.1, 21));
+      });
+      expect(frames).toHaveLength(1);
+      flushFrame();
+      const last = lastOf(h.result.current.bars);
+      expect({ high: last.high, close: last.close }).toEqual({ high: 103, close: 100.1 });
+      expect(h.result.current.live?.price).toBe(100.1);
+    });
+
+    it('folds an array of ticks in order', () => {
+      const h = setup(opts());
+      act(() => h.result.current.pushTick([tick(103, 20), tick(99.5, 21), tick(100.1, 22)]));
+      flushFrame();
+      const last = lastOf(h.result.current.bars);
+      expect({ high: last.high, low: last.low, close: last.close }).toEqual({ high: 103, low: 99.5, close: 100.1 });
+    });
+
+    it('applies the same guards as the tick prop', () => {
+      const h = setup(opts());
+      act(() => h.result.current.pushTick([tick(100.9, 20), tick(0, 25), tick(-1, 26), tick(Number.NaN, 27), tick(100.1, 10)]));
+      flushFrame();
+      expect(h.result.current.live?.price).toBe(100.9);
+      act(() => h.result.current.pushTick(tick(100.5, 22)));
+      flushFrame();
+      expect(h.result.current.live?.price).toBe(100.5);
+    });
+
+    it('keeps its identity across renders and key changes', () => {
+      const h = setup(opts());
+      const push = h.result.current.pushTick;
+      act(() => push(tick(100.9, 20)));
+      flushFrame();
+      h.rerender(opts({ key: 'ABC' }));
+      h.rerender(opts({ key: 'ABC', timeframe: '1Min' }));
+      expect(h.result.current.pushTick).toBe(push);
+    });
+
+    it('folds into the new series after a key change', () => {
+      const h = setup(opts());
+      act(() => h.result.current.pushTick(tick(250, 20)));
+      flushFrame();
+      h.rerender(opts({ key: 'ABC' }));
+      act(() => h.result.current.pushTick(tick(101, 21)));
+      flushFrame();
+      expect(h.result.current.live?.price).toBe(101);
+      expect(lastOf(h.result.current.bars).high).toBe(101);
+    });
+
+    it('is ignored while the key is null', () => {
+      const h = setup(opts({ key: null }));
+      act(() => h.result.current.pushTick(tick(101, 20)));
+      expect(frames).toHaveLength(0);
+      flushFrame();
+      expect(h.result.current.bars).toBe(REST);
+      expect(h.result.current.live).toBeNull();
+    });
+
+    it('is ignored after unmount', () => {
+      const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+      const h = setup(opts());
+      const push = h.result.current.pushTick;
+      h.unmount();
+      push(tick(101, 20));
+      expect(frames).toHaveLength(0);
+      expect(vi.getTimerCount()).toBe(0);
+      expect(errors).not.toHaveBeenCalled();
+    });
+
+    it('keeps its state through StrictMode\'s double mount', () => {
+      const wrapper = ({ children }: { children: ReactNode }) => createElement(StrictMode, null, children);
+      const h = setup(opts(), wrapper);
+      act(() => h.result.current.pushTick(tick(100.5, 301, 5)));
+      flushFrame();
+      expect(lastOf(h.result.current.bars).volume).toBe(5);
+      act(() => h.result.current.pushTick(tick(100.6, 302, 2)));
+      flushFrame();
+      expect(lastOf(h.result.current.bars)).toMatchObject({ volume: 7, close: 100.6 });
+      expect(h.result.current.live?.state).toBe('live');
+    });
+
+    it('requests a backfill when a pushed tick skips buckets', async () => {
+      const fetchGap = vi.fn(() => Promise.resolve<OHLCVBar[]>([]));
+      const h = setup(opts({ fetchGap }));
+      act(() => h.result.current.pushTick(tick(100.6, 901)));
+      expect(fetchGap).toHaveBeenCalledWith({ fromMs: T0, toMs: T0 + 900_000 }, withSignal);
+      await settle();
+    });
+
+    it('detects a stall when pushed ticks arrive but frames do not, and recovers on the next tick', () => {
+      const h = setup(opts());
+      act(() => h.result.current.pushTick(tick(100.3, 10)));
+      flushFrame();
+      advance(20_000);
+      act(() => h.result.current.pushTick(tick(100.4, 30)));
+      advance(10_000);
+      expect(h.result.current.live?.state).toBe('live');
+      advance(60_000);
+      expect(h.result.current.live?.state).toBe('stalled');
+      expect(vi.getTimerCount()).toBe(0);
+      act(() => h.result.current.pushTick(tick(100.5, 100)));
+      expect(h.result.current.live?.state).toBe('live');
+      expect(vi.getTimerCount()).toBe(1);
+    });
+
+    it('re-arms the stall timer when it fires before the clock reaches the deadline', () => {
+      const h = setup(opts());
+      act(() => h.result.current.pushTick(tick(100.3, 10)));
+      flushFrame();
+      const fakeNow = Date.now;
+      const behind = vi.spyOn(Date, 'now').mockImplementation(() => fakeNow.call(Date) - 5);
+      advance(30_000);
+      expect(h.result.current.live?.state).toBe('live');
+      behind.mockRestore();
+      advance(5);
+      expect(h.result.current.live?.state).toBe('stalled');
+    });
   });
 });
