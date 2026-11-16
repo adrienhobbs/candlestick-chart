@@ -63,9 +63,10 @@ interface UseIndicatorSeriesArgs {
   indicators: IndicatorInstance[];
   bars: OHLCVBar[];
   /**
-   * The plan useBarsSync chose for these bars (its effect runs first). On a tail
-   * change, series whose points changed only at the end get `update()` calls;
-   * without it every changed series gets setData.
+   * The plan useBarsSync chose for these bars (its effect runs first). A tail plan
+   * only permits `update()` calls: a series gets them when its points changed only
+   * at the end, which the feeder checks by comparing the points. Without a plan,
+   * every changed series gets setData.
    */
   barsSyncPlanRef?: MutableRefObject<BarsSyncPlan | null>;
 }

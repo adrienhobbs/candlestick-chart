@@ -238,6 +238,8 @@ export default function ChartComponent({
   // Shared with the bars-sync hook + reset by the create-once teardown.
   const previousBarsRef = useRef<OHLCVBar[]>([]);
   // Written by the bars sync, then read by the indicator sync later in the same commit.
+  // It only permits the indicator sync to use update(); that sync compares the points
+  // itself, so a stale plan cannot draw wrong data.
   const barsSyncPlanRef = useRef<BarsSyncPlan | null>(null);
   // Load-more state, shared by the range subscription (requests) and bars sync
   // (older bars arriving ends a request).

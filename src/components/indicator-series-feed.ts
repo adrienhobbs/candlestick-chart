@@ -12,12 +12,13 @@ export interface PointSink<T> {
 /** More changed tail points than this go through setData. */
 const MAX_TAIL_POINTS = 3;
 
+/** Same value under every key either point has; a missing key and an undefined one match. */
 function samePoint(a: SeriesPoint, b: SeriesPoint): boolean {
   if (a === b) return true;
   const x = a as Record<string, unknown>;
   const y = b as Record<string, unknown>;
   for (const k in x) if (x[k] !== y[k]) return false;
-  for (const k in y) if (!(k in x)) return false;
+  for (const k in y) if (x[k] !== y[k]) return false;
   return true;
 }
 
@@ -43,11 +44,12 @@ export function tailStart(prev: readonly SeriesPoint[], next: readonly SeriesPoi
 }
 
 /**
- * Feeds indicator series, remembering the points each one holds. When the bars
- * changed only at the tail (`update` / `append` / `none`), a series whose new
- * points differ only at the end gets those points through `update()`; anything
- * else, and any series it has not fed before, gets `setData`. A series it fed with
- * the same points is left alone.
+ * Feeds indicator series, remembering the points each one holds. A series whose
+ * new points differ from those only at the end gets them through `update()`, if
+ * the bars plan permits it (`update` / `append` / `none`); anything else, and any
+ * series it has not fed before, gets `setData`. The plan only permits `update()`:
+ * correctness comes from comparing the points, so a stale plan cannot draw wrong
+ * data. A series it fed with the same points is left alone.
  */
 export function createSeriesFeeder() {
   const held = new WeakMap<object, readonly SeriesPoint[]>();
@@ -58,19 +60,26 @@ export function createSeriesFeeder() {
     },
     sync<T extends SeriesPoint>(series: PointSink<T>, data: T[], plan: BarsSyncPlan | null): void {
       const prev = held.get(series);
+      if (prev !== undefined && prev.length === 0 && data.length === 0) return;
       const start = prev === undefined ? null : tailStart(prev, data);
       if (start === data.length) {
         held.set(series, data);
         return;
       }
+      // Remembered first, so whatever happens below the series ends up holding `data`.
+      held.set(series, data);
       if (start === null || (plan !== 'update' && plan !== 'append' && plan !== 'none')) {
         series.setData(data);
-      } else {
+        return;
+      }
+      try {
         // lightweight-charts writes a field onto the point update() gets, so it gets a
         // copy; the held point must stay comparable with the next recompute's.
         for (let i = start; i < data.length; i += 1) series.update({ ...data[i] });
+      } catch {
+        // A partial tail would leave the series out of step with `data`.
+        series.setData(data);
       }
-      held.set(series, data);
     },
   };
 }

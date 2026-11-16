@@ -57,3 +57,41 @@ describe('createSeriesFeeder', () => {
     expect(s.update).not.toHaveBeenCalled();
   });
 });
+
+describe('createSeriesFeeder review fixes', () => {
+  const sink = () => ({ setData: vi.fn(), update: vi.fn() });
+
+  it('treats a missing field and an undefined one as the same, both ways', () => {
+    const a = [p(0, 1), { time: 1, value: undefined }];
+    const b = [p(0, 1), p(1)];
+    expect(tailStart(a, b)).toBe(2);
+    expect(tailStart(b, a)).toBe(2);
+  });
+
+  it('falls back to setData when update() throws partway, and remembers the data', () => {
+    const feeder = createSeriesFeeder();
+    const s = sink();
+    feeder.set(s, line(4));
+    s.update.mockImplementationOnce(() => {}).mockImplementationOnce(() => {
+      throw new Error('Cannot update oldest data');
+    });
+    const next = [...line(3), p(3, 99), p(4, 1)];
+    feeder.sync(s, next, 'append');
+    expect(s.update).toHaveBeenCalledTimes(2);
+    expect(s.setData).toHaveBeenLastCalledWith(next);
+    s.update.mockClear();
+    feeder.sync(s, [...line(3), p(3, 99), p(4, 2)], 'update');
+    expect(s.update.mock.calls).toEqual([[p(4, 2)]]);
+  });
+
+  it('leaves an empty series alone while it stays empty', () => {
+    const feeder = createSeriesFeeder();
+    const s = sink();
+    feeder.set(s, []);
+    feeder.sync(s, [], 'update');
+    feeder.sync(s, [], 'set');
+    expect(s.setData).toHaveBeenCalledTimes(1);
+    feeder.sync(s, line(1), 'update');
+    expect(s.setData).toHaveBeenCalledTimes(2);
+  });
+});

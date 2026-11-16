@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
+import { StrictMode, createElement, type ReactNode } from 'react';
 import { renderHook } from '@testing-library/react';
 import type { OHLCVBar } from '../../types/chart';
 import { indicatorRegistry } from '../../indicators/core/registry';
@@ -40,7 +41,7 @@ function bar(timestamp: number, close: number): OHLCVBar {
 }
 const history = (): OHLCVBar[] => Array.from({ length: 80 }, (_, i) => bar(DAY1_START + i * MIN, 100 + Math.sin(i / 5) * 2));
 
-function mount(indicators: IndicatorInstance[], bars: OHLCVBar[]) {
+function mount(indicators: IndicatorInstance[], bars: OHLCVBar[], options: { strict?: boolean } = {}) {
   const created: StrictSeries[] = [];
   const chart = {
     addSeries: () => {
@@ -63,7 +64,10 @@ function mount(indicators: IndicatorInstance[], bars: OHLCVBar[]) {
   const hook = renderHook(
     (p: { bars: OHLCVBar[]; indicators: IndicatorInstance[] }) =>
       useIndicatorSeries({ ...refs, firstIndicatorPane: 2, indicators: p.indicators, bars: p.bars }),
-    { initialProps: { bars, indicators } },
+    {
+      initialProps: { bars, indicators },
+      wrapper: options.strict ? ({ children }: { children: ReactNode }) => createElement(StrictMode, null, children) : undefined,
+    },
   );
   let current = bars;
   let currentIndicators = indicators;
@@ -77,7 +81,11 @@ function mount(indicators: IndicatorInstance[], bars: OHLCVBar[]) {
     currentIndicators = next;
     hook.rerender({ bars: current, indicators: next });
   };
-  return { created, feed, setIndicators, refs };
+  const rerenderRaw = (next: OHLCVBar[]) => {
+    current = next;
+    hook.rerender({ bars: next, indicators: currentIndicators });
+  };
+  return { created, feed, setIndicators, refs, rerenderRaw };
 }
 
 /** Tail ticks and rollovers, ending in the next session so VWAP resets. */
@@ -169,5 +177,68 @@ describe('useIndicatorSeries tail updates', () => {
     live.feed(liveSequence(history())[0]);
     expect(live.created[1].setDataCalls).toBe(1);
     expect(live.created[1].updateCalls).toBe(1);
+  });
+});
+
+describe('useIndicatorSeries tail updates: review cases', () => {
+  it('a stale tail plan with only an indicator change still draws the new settings in full', () => {
+    const ema = instance('ema');
+    const live = mount([ema], history());
+    live.refs.barsSyncPlanRef.current = 'update';
+    const slower = { ...ema, settings: { ...ema.settings, period: 30 } };
+    live.setIndicators([slower]);
+    expect(live.created).toHaveLength(2);
+    expect(live.created[1].updateCalls).toBe(0);
+    indicatorCalculator.invalidateCache();
+    const full = mount([slower], history());
+    expect(live.created[1].data).toEqual(full.created[0].data);
+  });
+
+  it('a stale tail plan over bars that changed throughout falls back to setData', () => {
+    const live = mount([instance('ema')], history());
+    const shifted = history().map((b) => ({ ...b, close: b.close + 1 }));
+    live.refs.barsSyncPlanRef.current = 'update';
+    live.refs.barsRef.current = shifted;
+    live.rerenderRaw(shifted);
+    expect(live.created[0].setDataCalls).toBe(2);
+    expect(live.created[0].updateCalls).toBe(0);
+  });
+
+  it('keeps tail updates working after a StrictMode remount', () => {
+    const indicators = [instance('bollinger')];
+    const live = mount(indicators, history(), { strict: true });
+    const steps = liveSequence(history());
+    const drawn = () => [...live.refs.indicatorSeriesRef.current.values()] as unknown as StrictSeries[];
+    const setDataBefore = drawn().map((s) => s.setDataCalls);
+    for (const step of steps) live.feed(step);
+    expect(drawn().map((s) => s.setDataCalls)).toEqual(setDataBefore);
+    expect(drawn().every((s) => s.updateCalls > 0)).toBe(true);
+    indicatorCalculator.invalidateCache();
+    const full = mount(indicators, steps[steps.length - 1]);
+    expect(drawn().map((s) => s.data)).toEqual(full.created.map((s) => s.data));
+  });
+
+  it('a filtered series whose length changes mid-sequence still ends equal to a full recompute', () => {
+    // A histogram drops non-finite points, so its length moves with the values.
+    indicatorRegistry.register({
+      metadata: { id: 'gated', name: 'Gated', description: '', category: IndicatorCategory.MOMENTUM, version: '1.0.0' },
+      settings: {},
+      renderConfig: { seriesType: ChartSeriesType.HISTOGRAM, outputCount: 1, overlay: false },
+      calculate: (b) => b.map((x) => ({ time: x.timestamp / 1000, value: x.close > 101.5 ? NaN : x.close })),
+    });
+    const indicators = [instance('gated')];
+    const live = mount(indicators, history());
+    const lengths: number[] = [];
+    let bars = history();
+    for (const close of [100, 102, 100.5, 103, 101]) {
+      const last = bars[bars.length - 1];
+      bars = close === 103 ? [...bars, bar(last.timestamp + MIN, close)] : [...bars.slice(0, -1), { ...last, close }];
+      live.feed(bars);
+      lengths.push(live.created[0].data.length);
+    }
+    expect(new Set(lengths).size).toBeGreaterThan(1);
+    indicatorCalculator.invalidateCache();
+    const full = mount(indicators, bars);
+    expect(live.created[0].data).toEqual(full.created[0].data);
   });
 });
