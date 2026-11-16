@@ -29,25 +29,35 @@ function fakeSeries(data: Line) {
   };
 }
 
-/** A time scale showing bars [first, first + WIDTH / SPACING) of `n`, one bar every SPACING px. */
-function fakeChart(n: number) {
+/**
+ * Bar placement: bar `view.first` sits at `offset` px, one bar every `spacing` px,
+ * and the time scale reports `visibleBars` bars from it as visible.
+ */
+interface Geometry {
+  spacing: number;
+  offset: number;
+  visibleBars: number;
+}
+const DEFAULT_GEOMETRY: Geometry = { spacing: SPACING, offset: SPACING / 2, visibleBars: WIDTH / SPACING };
+
+function fakeChart(n: number, geom: Geometry = DEFAULT_GEOMETRY) {
   const view = { first: 0 };
   const timeOf = (i: number) => 1000 + i * 60;
   const timeScale = {
     width: () => WIDTH,
-    timeToCoordinate: vi.fn((t: number) => ((t - 1000) / 60 - view.first) * SPACING + SPACING / 2),
+    timeToCoordinate: vi.fn((t: number) => ((t - 1000) / 60 - view.first) * geom.spacing + geom.offset),
     getVisibleRange: () => {
-      const last = Math.min(n - 1, view.first + WIDTH / SPACING - 1);
+      const last = Math.min(n - 1, view.first + geom.visibleBars - 1);
       return view.first > n - 1 ? null : { from: timeOf(view.first), to: timeOf(last) };
     },
   };
   return { view, timeScale, chart: { timeScale: () => timeScale } };
 }
 
-function setup(n: number, upperData: Line, lowerData: Line) {
+function setup(n: number, upperData: Line, lowerData: Line, geom: Geometry = DEFAULT_GEOMETRY) {
   const upper = fakeSeries(upperData);
   const lower = fakeSeries(lowerData);
-  const { view, timeScale, chart } = fakeChart(n);
+  const { view, timeScale, chart } = fakeChart(n, geom);
   const primitive = new BandsPrimitive({ upperSeries: upper as never, lowerSeries: lower as never, fillColor: '#abc' });
   primitive.attached({ chart, series: upper, requestUpdate: () => {} } as never);
   const draw = () => {
@@ -73,8 +83,8 @@ function setup(n: number, upperData: Line, lowerData: Line) {
 }
 
 /** The pre-change algorithm: every time both bands have, converted, then drawn as one polygon. */
-function fullPolygon(upper: Line, lower: Line, first: number) {
-  const x = (t: number) => ((t - 1000) / 60 - first) * SPACING + SPACING / 2;
+function fullPolygon(upper: Line, lower: Line, first: number, geom: Geometry = DEFAULT_GEOMETRY) {
+  const x = (t: number) => ((t - 1000) / 60 - first) * geom.spacing + geom.offset;
   const lowerByTime = new Map(lower.map((d) => [d.time as number, d.value]));
   return upper
     .filter((d) => lowerByTime.has(d.time as number))
@@ -181,5 +191,40 @@ describe('BandsPrimitive', () => {
     t.primitive.detached();
     expect(t.upper.handlers.size).toBe(0);
     expect(t.lower.handlers.size).toBe(0);
+  });
+
+  it('a data change alone is enough for the next draw to show the new data', () => {
+    const lower = line(200, (i) => 90 + i);
+    const t = setup(200, line(200, (i) => 110 + i), lower);
+    t.view.first = 50;
+    t.primitive.updateAllViews();
+    t.draw();
+    const moved = line(200, (i) => 130 + i);
+    t.upper.change(moved);
+    expect(t.draw().calls).toEqual(polygonCalls(clipToPane(fullPolygon(moved, lower, 50))));
+  });
+
+  it('with wide bars, walks out past as many neighbours as it takes to leave the pane', () => {
+    // Bar spacing 40 px with bar `first` at x = 90: bars first-1 and first-2 are still
+    // on screen at x = 50 and 10, first-3 is off it at x = -30.
+    const geom = { spacing: 40, offset: 90, visibleBars: 1 };
+    const upper = line(50, (i) => 110 + Math.sin(i));
+    const lower = line(50, (i) => 90 + Math.cos(i));
+    const t = setup(50, upper, lower, geom);
+    t.view.first = 20;
+    t.primitive.updateAllViews();
+    const expected = clipToPane(fullPolygon(upper, lower, 20, geom));
+    expect(expected.map((p) => p.x)).toEqual([-30, 10, 50, 90, 130]);
+    expect(t.draw().calls).toEqual(polygonCalls(expected));
+  });
+
+  it('stops walking at a point it cannot place, instead of scanning the history', () => {
+    const t = setup(5000, line(5000, (i) => 110 + i), line(5000, (i) => 90 + i));
+    t.view.first = 2500;
+    // Prices of the bars left of the view have no coordinate.
+    t.upper.priceToCoordinate.mockImplementation((p: number) => (p < 110 + 2500 ? null : 500 - p) as number);
+    t.primitive.updateAllViews();
+    t.draw();
+    expect(t.timeScale.timeToCoordinate).toHaveBeenCalledTimes(WIDTH / SPACING + 2);
   });
 });

@@ -197,4 +197,15 @@ describe('SessionsPrimitive', () => {
     t.primitive.detached();
     expect(t.series.handlers.size).toBe(0);
   });
+
+  it('a data change alone is enough for the next draw to show the new data', () => {
+    const t = setup(5);
+    t.view.first = 5 * BARS_PER_DAY - 10;
+    t.primitive.updateAllViews();
+    t.draw();
+    const longer = times(6);
+    t.series.change(longer);
+    expectSamePixels(t.draw(), fullOutput(longer, t.view.first));
+    expect(t.series.data).toHaveBeenCalledTimes(2);
+  });
 });

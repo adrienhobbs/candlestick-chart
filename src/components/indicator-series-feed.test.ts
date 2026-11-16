@@ -95,3 +95,38 @@ describe('createSeriesFeeder review fixes', () => {
     expect(s.setData).toHaveBeenCalledTimes(2);
   });
 });
+
+describe('createSeriesFeeder when setData throws', () => {
+  const sink = () => ({ setData: vi.fn(), update: vi.fn() });
+
+  it('retries a failed setData on the next identical sync', () => {
+    const feeder = createSeriesFeeder();
+    const s = sink();
+    feeder.set(s, line(4));
+    s.setData.mockImplementationOnce(() => {
+      throw new Error('setData failed');
+    });
+    const next = [p(0, 5), ...line(4).slice(1)];
+    expect(() => feeder.sync(s, next, 'set')).toThrow('setData failed');
+    feeder.sync(s, next, 'set');
+    expect(s.setData).toHaveBeenCalledTimes(3);
+    expect(s.setData).toHaveBeenLastCalledWith(next);
+  });
+
+  it('retries when the setData fallback after a failed update() also throws', () => {
+    const feeder = createSeriesFeeder();
+    const s = sink();
+    feeder.set(s, line(4));
+    s.update.mockImplementationOnce(() => {
+      throw new Error('update failed');
+    });
+    s.setData.mockImplementationOnce(() => {
+      throw new Error('setData failed');
+    });
+    const next = line(5);
+    expect(() => feeder.sync(s, next, 'append')).toThrow('setData failed');
+    feeder.sync(s, next, 'append');
+    expect(s.setData).toHaveBeenCalledTimes(3);
+    expect(s.setData).toHaveBeenLastCalledWith(next);
+  });
+});

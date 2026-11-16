@@ -66,10 +66,11 @@ export function createSeriesFeeder() {
         held.set(series, data);
         return;
       }
-      // Remembered first, so whatever happens below the series ends up holding `data`.
-      held.set(series, data);
       if (start === null || (plan !== 'update' && plan !== 'append' && plan !== 'none')) {
+        // Forgotten until setData succeeds, so a failed one is retried on the next sync.
+        held.delete(series);
         series.setData(data);
+        held.set(series, data);
         return;
       }
       try {
@@ -78,8 +79,10 @@ export function createSeriesFeeder() {
         for (let i = start; i < data.length; i += 1) series.update({ ...data[i] });
       } catch {
         // A partial tail would leave the series out of step with `data`.
+        held.delete(series);
         series.setData(data);
       }
+      held.set(series, data);
     },
   };
 }

@@ -209,11 +209,12 @@ export class BandsPrimitive implements ISeriesPrimitive<Time> {
     const end = lowerBound(pairs, (range.to as number) + 1e-9);
     const points: BandPoint[] = [];
     // Walk out past each edge until a point lies outside the pane, so the polygon's
-    // closing edges stay off-screen as they would with every point drawn.
+    // closing edges stay off-screen as they would with every point drawn. A point
+    // with no coordinate ends the walk, so it can never scan the whole history.
     const before: BandPoint[] = [];
     for (let i = first - 1; i >= 0; i--) {
       const pt = toPoint(pairs[i]);
-      if (pt === null) continue;
+      if (pt === null) break;
       before.push(pt);
       if (pt.x <= 0) break;
     }
@@ -225,7 +226,7 @@ export class BandsPrimitive implements ISeriesPrimitive<Time> {
     const width = timeScale.width();
     for (let i = end; i < pairs.length; i++) {
       const pt = toPoint(pairs[i]);
-      if (pt === null) continue;
+      if (pt === null) break;
       points.push(pt);
       if (pt.x >= width) break;
     }
