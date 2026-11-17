@@ -1,6 +1,6 @@
 # API Reference
 
-Reference for the public API of `@adrienhobbs/candlekit` (0.9.2). Everything below is a
+Reference for the public API of `@adrienhobbs/candlekit` (0.10.0). Everything below is a
 named export of the package root unless stated otherwise.
 
 ```bash
@@ -328,6 +328,78 @@ newBarIntervalMs })`, copies the first non-empty `initialBars` once, and then, w
 It is a demo simulator, not a data-feed hook. Use `useBarsData` with an adapter instead
 (`MockAdapter` for simulated data).
 
+### useRealtimeBars
+
+Folds host-pushed ticks into a host-owned REST history and returns live chart state. `pushTick` is
+the preferred input: it is stable for the hook's lifetime and accepts one tick or an ordered array,
+so a burst loses no intermediate extremes. The `tick` option remains available for simple hosts;
+pass a new object per tick.
+
+#### Options
+
+| Option | Type | Meaning |
+|--------|------|---------|
+| `key` | `string \| null` | Series identity (usually the symbol); `null` disables the hook, and a change resets live state |
+| `bars` | `OHLCVBar[]` | Host-owned REST history, refetched whenever the host chooses |
+| `timeframe` | `string` | `1Min`, `5Min`, `15Min`, `1Hour`, or `1Day` |
+| `tick` | `RealtimeTick \| null` | Optional prop-driven latest tick; only the tick present at each render is folded |
+| `connection` | `LiveConnection` | Host socket state: `'connecting' \| 'open' \| 'closed'` |
+| `reference` | `number \| null` | Optional up/down color reference (for example previous close); defaults to the last bar's open |
+| `fetchGap` | `(range: GapRange, options: GapFetchOptions) => Promise<OHLCVBar[]>` | Optional backfill for reconnects and skipped buckets; must honour `options.signal` |
+| `onGapError` | `(err: unknown) => void` | Receives a rejected gap request or a non-array response; the next trigger retries |
+| `stallAfterMs` | `number` | Silence before an open stream becomes `stalled`; default `DEFAULT_STALL_AFTER_MS` (30,000) |
+
+`RealtimeTick` is `{ price: number; time: number | string; size?: number; key?: string }`. Time is
+epoch milliseconds or an ISO string. The sizes of a bucket's ticks are summed, and the bar's volume
+is the larger of that sum and REST's volume for the bucket, never the two added together, because
+REST may already include the streamed trades. A keyed tick whose key differs from the hook's is
+dropped, allowing one socket to feed several charts.
+
+`GapRange` is `{ fromMs: number; toMs: number }`. `GapFetchOptions` is `{ signal: AbortSignal }`.
+Only one request runs at a time, responses for a superseded series are aborted/dropped, and retained
+gap history is capped at `MAX_GAP_BARS` (2,000) bars.
+
+#### Returns
+
+```typescript
+{
+  bars: OHLCVBar[];
+  live: LiveState | null;
+  pushTick: (tick: RealtimeTick | readonly RealtimeTick[]) => void;
+}
+```
+
+`LiveState` has `price: number`, `reference: number`, `barCloseAt: number | null` (the forming
+intraday bucket's end, epoch ms; `null` on `1Day`), and
+`state: 'connecting' | 'live' | 'stalled' | 'disconnected'`. Pass it to `ChartComponent`'s `live`
+prop. See [Data Management → Realtime bars](./data-management.md#realtime-bars-userealtimebars) for
+usage and folding behavior.
+
+#### Pure folding functions
+
+```typescript
+foldTick(
+  state: LiveFoldState | null,
+  input: { key: string; bars: OHLCVBar[]; timeframe: string; tick: RealtimeTick },
+): { bars: OHLCVBar[]; state: LiveFoldState | null };
+
+mergeLive(bars: OHLCVBar[], state: LiveFoldState | null): OHLCVBar[];
+
+intradayBucketMs(timeframe: string): number | undefined;
+```
+
+`intradayBucketMs` returns the bucket length in milliseconds of an intraday timeframe: `1Min`
+(60,000), `5Min` (300,000), `15Min` (900,000) or `1Hour` (3,600,000). Any other string, including
+`1Day` and inherited object keys such as `'constructor'`, returns `undefined`; for such a timeframe the
+hook reports `live.barCloseAt` as `null`.
+
+`LiveFoldState` extends `LiveBucketBar` with `key`, `timeframe`, `lastTickMs`, and the `closed`
+bucket list. `LiveBucketBar` exposes `bucket`, `open`, `high`, `low`, `close`, `volume`,
+`tickVolume`, and the public per-bucket traded extremes `tickHigh` / `tickLow`. `high` / `low`
+include the live open; `tickHigh` / `tickLow` preserve the actual tick extremes used when REST
+catches up. `tickVolume` is the sum of the bucket's tick sizes; `volume` is the larger of that and
+REST's volume for the bucket (the current REST bar's when REST has it, else the last one seen).
+
 ---
 
 ## React Components
@@ -586,7 +658,10 @@ value), `OhlcLegendData`, `OhlcLegendIndicator`, `ChartComponentProps`, `VolumeM
 [ChartComponent Usage](./chart-component.md) and [Theming](./theming.md). The adapter
 types (`BarDataAdapter`, `BarDataAdapterOptions`, `HistoricalDataParams`,
 `RealtimeHandlers`, `RealtimeSubscription`) are in the
-[Data Management Guide](./data-management.md#creating-custom-adapters).
+[Data Management Guide](./data-management.md#creating-custom-adapters). The realtime types
+`UseRealtimeBarsOptions`, `UseRealtimeBarsResult`, `GapFetchOptions`, `RealtimeTick`, `LiveState`,
+`LiveStreamState`, `LiveConnection`, `LiveFoldState`, `LiveBucketBar`, and `GapRange` are documented
+under [useRealtimeBars](#userealtimebars).
 
 ---
 

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, type MutableRefObject } from 'react';
+import { useEffect, useMemo, useState, type MutableRefObject } from 'react';
 import {
   AreaSeries,
   createSeriesMarkers,
@@ -19,6 +19,8 @@ import { indicatorCalculator } from '../../indicators/core/calculator';
 import { BandsPrimitive } from '../../indicators/primitives/BandsPrimitive';
 import { BAND_FILL } from '../../constants/colors';
 import { transformSeriesData, transformSeriesDataWithGaps } from '../transformSeriesData';
+import type { BarsSyncPlan } from '../bars-sync-plan';
+import { createSeriesFeeder } from '../indicator-series-feed';
 import { buildIndicatorPointMarkers, fieldColor, pointFieldsOf, resolvePointStyle } from '../indicator-points';
 
 // Output field names of a calculated indicator point (everything but `time`).
@@ -60,12 +62,21 @@ interface UseIndicatorSeriesArgs {
   firstIndicatorPane: number;
   indicators: IndicatorInstance[];
   bars: OHLCVBar[];
+  /**
+   * The plan useBarsSync chose for these bars (its effect runs first). A tail plan
+   * only permits `update()` calls: a series gets them when its points changed only
+   * at the end, which the feeder checks by comparing the points. Without a plan,
+   * every changed series gets setData.
+   */
+  barsSyncPlanRef?: MutableRefObject<BarsSyncPlan | null>;
 }
 
 /**
  * Build/refresh indicator series. The setup effect (deps `[indicators]`)
  * recreates every series when the indicator set changes; the update effect
- * (deps `[bars, indicators]`) re-feeds data so series track lazily-loaded bars.
+ * (deps `[bars, indicators]`) re-feeds data so series track lazily-loaded bars;
+ * when the bars changed only at the tail, series changed only at their end get
+ * `update()` calls instead of setData.
  * The series + pane-index refs are passed in (shared with the create-once
  * teardown, which clears them for StrictMode's double-mount).
  */
@@ -80,7 +91,9 @@ export function useIndicatorSeries({
   firstIndicatorPane,
   indicators: allIndicators,
   bars,
+  barsSyncPlanRef,
 }: UseIndicatorSeriesArgs) {
+  const [feeder] = useState(createSeriesFeeder);
   // Disabled instances are neither calculated nor drawn, so they cost nothing on live bar updates.
   const indicators = useMemo(() => allIndicators.filter((i) => i.enabled !== false), [allIndicators]);
 
@@ -145,7 +158,7 @@ export function useIndicatorSeries({
           // warm-up renders identically, and a level that resets per day shows a clean
           // segment per day instead of one connected line across the gaps.
           const lineData = transformSeriesDataWithGaps(data, 'value');
-          series.setData(lineData as (LineData | WhitespaceData)[]);
+          feeder.set(series, lineData as (LineData | WhitespaceData)[]);
           indicatorSeriesRef.current.set(indicator.id, series);
         } else if (definition.renderConfig.hasBandFill && definition.renderConfig.fillBands) {
           const { upper: upperField, lower: lowerField } = definition.renderConfig.fillBands;
@@ -170,9 +183,9 @@ export function useIndicatorSeries({
           const middleData = transformSeriesData(data, 'value', (v) => !isNaN(v));
           const lowerData = transformSeriesData(data, lowerField, (v) => !isNaN(v));
 
-          upperSeries.setData(upperData as LineData[]);
-          middleSeries.setData(middleData as LineData[]);
-          lowerSeries.setData(lowerData as LineData[]);
+          feeder.set(upperSeries, upperData as LineData[]);
+          feeder.set(middleSeries, middleData as LineData[]);
+          feeder.set(lowerSeries, lowerData as LineData[]);
 
           if (indicator.settings.showFill !== false) {
             const bandsPrimitive = new BandsPrimitive({
@@ -211,7 +224,7 @@ export function useIndicatorSeries({
                     },
                     paneIndex,
                   );
-            series.setData(points as (LineData | HistogramData)[]);
+            feeder.set(series, points as (LineData | HistogramData)[]);
             indicatorSeriesRef.current.set(`${indicator.id}-${key}`, series);
           });
         }
@@ -221,7 +234,7 @@ export function useIndicatorSeries({
           title: indicator.name,
         }, paneIndex);
         const histData = transformSeriesData(data, 'value');
-        series.setData(histData as HistogramData[]);
+        feeder.set(series, histData as HistogramData[]);
         indicatorSeriesRef.current.set(indicator.id, series);
       } else if (seriesType === 'area') {
         const series = chartRef.current!.addSeries(AreaSeries, {
@@ -232,7 +245,7 @@ export function useIndicatorSeries({
           title: indicator.name,
         }, paneIndex);
         const areaData = transformSeriesData(data, 'value');
-        series.setData(areaData as LineData[]);
+        feeder.set(series, areaData as LineData[]);
         indicatorSeriesRef.current.set(indicator.id, series);
       }
     });
@@ -241,6 +254,7 @@ export function useIndicatorSeries({
 
   useEffect(() => {
     if (!chartRef.current || indicators.length === 0) return;
+    const plan = barsSyncPlanRef?.current ?? null;
 
     indicators.forEach((indicator) => {
       const definition = indicatorRegistry.get(indicator.definitionId);
@@ -256,9 +270,9 @@ export function useIndicatorSeries({
         if (series) {
           // Line series break at gaps (whitespace); histogram/area keep the drop behavior.
           if (definition.renderConfig.seriesType === 'line') {
-            series.setData(transformSeriesDataWithGaps(data, 'value') as (LineData | WhitespaceData)[]);
+            feeder.sync(series, transformSeriesDataWithGaps(data, 'value') as (LineData | WhitespaceData)[], plan);
           } else {
-            series.setData(transformSeriesData(data, 'value') as LineData[]);
+            feeder.sync(series, transformSeriesData(data, 'value') as LineData[], plan);
           }
         }
       } else if (definition.renderConfig.hasBandFill && definition.renderConfig.fillBands) {
@@ -273,9 +287,9 @@ export function useIndicatorSeries({
           const middleData = transformSeriesData(data, 'value', (v) => !isNaN(v));
           const lowerData = transformSeriesData(data, lowerField, (v) => !isNaN(v));
 
-          upperSeries.setData(upperData as LineData[]);
-          middleSeries.setData(middleData as LineData[]);
-          lowerSeries.setData(lowerData as LineData[]);
+          feeder.sync(upperSeries, upperData as LineData[], plan);
+          feeder.sync(middleSeries, middleData as LineData[], plan);
+          feeder.sync(lowerSeries, lowerData as LineData[], plan);
         }
       } else {
         // Generic multi-output indicator (mirrors the setup branch): refresh each
@@ -284,7 +298,7 @@ export function useIndicatorSeries({
           const series = indicatorSeriesRef.current.get(`${indicator.id}-${key}`);
           if (!series) return;
           const points = transformSeriesData(data, key);
-          series.setData(points as LineData[]);
+          feeder.sync(series, points as LineData[], plan);
         });
       }
     });

@@ -204,4 +204,8 @@ export interface ChartTheme {
   volumeUpColor: string;
   /** Down volume bar. */
   volumeDownColor: string;
+  /** Live price line + tag when price >= reference. Defaults to `upColor`. */
+  livePriceUpColor?: string;
+  /** Live price line + tag when price < reference. Defaults to `downColor`. */
+  livePriceDownColor?: string;
 }

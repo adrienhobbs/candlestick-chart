@@ -1,7 +1,8 @@
 import { useEffect, type Dispatch, type MutableRefObject, type SetStateAction } from 'react';
-import { CandlestickData, HistogramData, ISeriesApi, Time } from 'lightweight-charts';
+import { ISeriesApi } from 'lightweight-charts';
 import { OHLCVBar, ChartTheme } from '../../types/chart';
-import { planBarsSync } from '../bars-sync-plan';
+import { planBarsSync, sortedUniqueBars, type BarsSyncPlan } from '../bars-sync-plan';
+import { applyBarsSync } from '../bars-sync-apply';
 import type { LoadMoreGate } from '../load-more-gate';
 
 interface UseBarsSyncArgs {
@@ -12,12 +13,14 @@ interface UseBarsSyncArgs {
   previousBarsRef: MutableRefObject<OHLCVBar[]>;
   setIsLoadingMore: Dispatch<SetStateAction<boolean>>;
   bars: OHLCVBar[];
+  /** Receives each plan, for the indicator sync that runs after this effect. */
+  barsSyncPlanRef?: MutableRefObject<BarsSyncPlan | null>;
 }
 
 /**
  * Sync `bars` into the candlestick + volume series, diffing against the previous
- * bars (`planBarsSync`) to choose a full `setData` vs. a single-bar `update`
- * (only the last bar changed). Owns the bars-diff trackers shared with the
+ * bars (`planBarsSync`) to choose a full `setData`, a last-bar `update`, or an
+ * `append` (a live rollover). Owns the bars-diff trackers shared with the
  * create-once teardown (which resets them for StrictMode's double-mount).
  */
 export function useBarsSync({
@@ -28,57 +31,26 @@ export function useBarsSync({
   previousBarsRef,
   setIsLoadingMore,
   bars,
+  barsSyncPlanRef,
 }: UseBarsSyncArgs) {
   useEffect(() => {
     if (!candlestickSeriesRef.current || !volumeSeriesRef.current) return;
 
-    const sortedBars = [...bars].sort((a, b) => a.timestamp - b.timestamp);
-
-    // Sorted, so a duplicate timestamp is always adjacent; keep the first.
-    const uniqueBars = sortedBars.filter(
-      (bar, i) => i === 0 || bar.timestamp !== sortedBars[i - 1].timestamp,
-    );
+    const uniqueBars = sortedUniqueBars(bars);
 
     const plan = planBarsSync(previousBarsRef.current, uniqueBars);
+    if (barsSyncPlanRef) barsSyncPlanRef.current = plan;
 
     if (loadMoreGateRef.current.onBars(uniqueBars[0]?.timestamp)) setIsLoadingMore(false);
 
-    if (plan === 'set') {
-      const candleData: CandlestickData[] = uniqueBars.map((bar) => ({
-        time: (bar.timestamp / 1000) as Time,
-        open: bar.open,
-        high: bar.high,
-        low: bar.low,
-        close: bar.close,
-      }));
-
-      const volumeData: HistogramData[] = uniqueBars.map((bar) => ({
-        time: (bar.timestamp / 1000) as Time,
-        value: bar.volume,
-        color: bar.close >= bar.open ? themeRef.current.volumeUpColor : themeRef.current.volumeDownColor,
-      }));
-
-      candlestickSeriesRef.current.setData(candleData);
-      volumeSeriesRef.current.setData(volumeData);
-    } else if (plan === 'update') {
-      const lastBar = uniqueBars[uniqueBars.length - 1];
-      const candleUpdate: CandlestickData = {
-        time: (lastBar.timestamp / 1000) as Time,
-        open: lastBar.open,
-        high: lastBar.high,
-        low: lastBar.low,
-        close: lastBar.close,
-      };
-
-      const volumeUpdate: HistogramData = {
-        time: (lastBar.timestamp / 1000) as Time,
-        value: lastBar.volume,
-        color: lastBar.close >= lastBar.open ? themeRef.current.volumeUpColor : themeRef.current.volumeDownColor,
-      };
-
-      candlestickSeriesRef.current.update(candleUpdate);
-      volumeSeriesRef.current.update(volumeUpdate);
-    }
+    applyBarsSync(
+      plan,
+      previousBarsRef.current,
+      uniqueBars,
+      candlestickSeriesRef.current,
+      volumeSeriesRef.current,
+      themeRef.current,
+    );
 
     previousBarsRef.current = uniqueBars;
   }, [bars]);

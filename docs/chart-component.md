@@ -255,6 +255,8 @@ const bars: OHLCVBar[] = [
 | `height` | `number` | fill parent | Fixed chart height in px. Omit to fill the parent's height (tracked with a ResizeObserver); a parent with no definite height gets 600px |
 | `theme` | `Partial<ChartTheme>` | slate dark | Chart canvas colors — background, grid, axes, candles, volume. See [Theming](./theming.md) |
 | `volumeMode` | `'pane' \| 'overlay'` | `'pane'` | Volume in its own pane under the price pane, or as an overlay along the bottom of the price pane. See [Volume](#volume) |
+| `live` | `LiveState \| null` | `null` | From `useRealtimeBars`. Draws a dashed live price line with axis tag (up/down color against `live.reference`, theme keys `livePriceUpColor` / `livePriceDownColor`), replacing the series' last-value line, and a bar-close countdown under the tag on intraday timeframes |
+| `onLiveStateChange` | `(state: LiveStreamState) => void` | — | Fired when `live.state` changes |
 
 Array props default to stable module-level empty arrays, so omitting one does not re-run
 its effects on every render. Arrays you pass should be memoized for the same reason.
@@ -1091,7 +1093,10 @@ On each `bars` change the chart sorts the bars and drops duplicate timestamps (k
 first), then compares them with the previous set:
 
 - only the last bar changed (a forming bar ticking): a single `update()`, which keeps the view;
-- anything else (first load, a prepended page, a new symbol, a different length): a full `setData()`;
+- exactly one newer bar appended after unchanged bars (a live rollover): `update()` calls only,
+  one for the new bar plus one for the previous last bar if it changed too;
+- anything else (first load, a prepended page, a new symbol, a shorter series, several new bars):
+  a full `setData()`;
 - nothing changed: no work.
 
 Replacing `bars` with a different series (e.g. switching symbols) is applied in place; there

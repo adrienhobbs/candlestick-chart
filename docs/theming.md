@@ -42,6 +42,8 @@ export interface ChartTheme {
   downColor: string;           // bearish candle body + wick, and loss trade markers
   volumeUpColor: string;       // up volume bar (an alpha suffix is fine: "#8fbc8f59")
   volumeDownColor: string;     // down volume bar
+  livePriceUpColor?: string;   // live price line + tag when price >= reference (default: upColor)
+  livePriceDownColor?: string; // live price line + tag when price < reference (default: downColor)
 }
 ```
 
