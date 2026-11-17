@@ -42,19 +42,21 @@ export function bucketOf(last: OHLCVBar, timeframe: string, ms: number): number 
 }
 
 function bucketBar(s: LiveBucketBar): LiveBucketBar {
-  const { bucket, open, high, low, close, volume, tickHigh, tickLow } = s;
-  return { bucket, open, high, low, close, volume, tickHigh, tickLow };
+  const { bucket, open, high, low, close, volume, tickVolume, tickHigh, tickLow } = s;
+  return { bucket, open, high, low, close, volume, tickVolume, tickHigh, tickLow };
 }
 
 /**
  * Widens and re-closes REST's bar with the live bucket. Only traded extremes
  * widen it: a live open seeded from the previous close never traded in this
- * bucket, so it must not draw a wick on REST's bar. Unchanged bars come back as-is.
+ * bucket, so it must not draw a wick on REST's bar. REST's volume may already
+ * include the streamed trades, so volume is the larger of the two, never the sum.
+ * Unchanged bars come back as-is.
  */
 function mergeInto(rest: OHLCVBar, live: LiveBucketBar): OHLCVBar {
   const high = Math.max(rest.high, live.tickHigh);
   const low = Math.min(rest.low, live.tickLow);
-  const volume = Math.max(rest.volume, live.volume);
+  const volume = Math.max(rest.volume, live.tickVolume);
   if (rest.close === live.close && rest.high === high && rest.low === low && rest.volume === volume) return rest;
   return { ...rest, high, low, close: live.close, volume };
 }
@@ -149,23 +151,27 @@ export function foldTick(
   let open: number;
   let tickHigh: number;
   let tickLow: number;
-  let volume: number;
+  let tickVolume: number;
+  // REST's volume for the bucket: the current bar when REST has it, else the last one seen.
+  let restVolume: number;
   if (sameBucket) {
     open = base.open;
     tickHigh = Math.max(base.tickHigh, price);
     tickLow = Math.min(base.tickLow, price);
-    // A refetch can report more volume for this bucket than the live running total.
-    volume = (bucket === last.timestamp ? Math.max(base.volume, last.volume) : base.volume) + size;
+    tickVolume = base.tickVolume + size;
+    restVolume = bucket === last.timestamp ? last.volume : base.volume;
   } else if (covered) {
     open = last.open;
     tickHigh = Math.max(last.high, price);
     tickLow = Math.min(last.low, price);
-    volume = last.volume + size;
+    tickVolume = size;
+    restVolume = last.volume;
   } else {
     open = tailClose;
     tickHigh = price;
     tickLow = price;
-    volume = size;
+    tickVolume = size;
+    restVolume = 0;
   }
   const state: LiveFoldState = {
     key,
@@ -175,7 +181,8 @@ export function foldTick(
     high: Math.max(open, tickHigh),
     low: Math.min(open, tickLow),
     close: price,
-    volume,
+    volume: Math.max(restVolume, tickVolume),
+    tickVolume,
     tickHigh,
     tickLow,
     lastTickMs: ms,

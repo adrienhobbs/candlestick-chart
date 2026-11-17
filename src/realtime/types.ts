@@ -2,7 +2,10 @@
 export interface RealtimeTick {
   price: number;
   time: number | string;
-  /** Traded size; adds to the forming bar's volume when present. */
+  /**
+   * Traded size. A bucket's sizes are summed, and its bar shows the larger of that sum
+   * and REST's volume (REST may already include the streamed trades).
+   */
   size?: number;
   /** The series (symbol) this tick is for. When set, a tick for another series is dropped. */
   key?: string;
@@ -17,7 +20,10 @@ export interface LiveBucketBar {
   /** Includes `open`, so a bar appended from this bucket is a valid candle. */
   low: number;
   close: number;
+  /** Shown volume: the larger of REST's volume for the bucket and `tickVolume`. */
   volume: number;
+  /** Sum of the sizes of the ticks folded into this bucket. */
+  tickVolume: number;
   /** Highest traded price: the ticks', plus REST's high when REST had the bucket first. */
   tickHigh: number;
   /** Lowest traded price: the ticks', plus REST's low when REST had the bucket first. */

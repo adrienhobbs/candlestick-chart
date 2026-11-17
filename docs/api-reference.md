@@ -350,8 +350,10 @@ pass a new object per tick.
 | `stallAfterMs` | `number` | Silence before an open stream becomes `stalled`; default `DEFAULT_STALL_AFTER_MS` (30,000) |
 
 `RealtimeTick` is `{ price: number; time: number | string; size?: number; key?: string }`. Time is
-epoch milliseconds or an ISO string. Size adds to volume. A keyed tick whose key differs from the
-hook's is dropped, allowing one socket to feed several charts.
+epoch milliseconds or an ISO string. The sizes of a bucket's ticks are summed, and the bar's volume
+is the larger of that sum and REST's volume for the bucket, never the two added together, because
+REST may already include the streamed trades. A keyed tick whose key differs from the hook's is
+dropped, allowing one socket to feed several charts.
 
 `GapRange` is `{ fromMs: number; toMs: number }`. `GapFetchOptions` is `{ signal: AbortSignal }`.
 Only one request runs at a time, responses for a superseded series are aborted/dropped, and retained
@@ -385,9 +387,11 @@ mergeLive(bars: OHLCVBar[], state: LiveFoldState | null): OHLCVBar[];
 ```
 
 `LiveFoldState` extends `LiveBucketBar` with `key`, `timeframe`, `lastTickMs`, and the `closed`
-bucket list. `LiveBucketBar` exposes `bucket`, `open`, `high`, `low`, `close`, `volume`, and the
-public per-bucket traded extremes `tickHigh` / `tickLow`. `high` / `low` include the live open;
-`tickHigh` / `tickLow` preserve the actual tick extremes used when REST catches up.
+bucket list. `LiveBucketBar` exposes `bucket`, `open`, `high`, `low`, `close`, `volume`,
+`tickVolume`, and the public per-bucket traded extremes `tickHigh` / `tickLow`. `high` / `low`
+include the live open; `tickHigh` / `tickLow` preserve the actual tick extremes used when REST
+catches up. `tickVolume` is the sum of the bucket's tick sizes; `volume` is the larger of that and
+REST's volume for the bucket (the current REST bar's when REST has it, else the last one seen).
 
 ---
 

@@ -185,12 +185,12 @@ describe('foldTick', () => {
     expect(last.bars).toHaveLength(REST.length + MAX_CLOSED + 1);
   });
 
-  it('adds tick size to volume, never below the REST volume', () => {
+  it('sums tick sizes, showing the larger of that and the REST volume', () => {
     const [, appended] = fold([{ price: 100.5, s: 301, size: 10 }, { price: 100.6, s: 302, size: 5 }]);
     expect(lastBar(appended).volume).toBe(15);
-    // A covered bucket starts from REST's volume (1) and adds the tick's size.
+    // A covered bucket shows the larger of REST's volume (1) and the tick sizes (3).
     const [covered] = fold([{ price: 100.3, s: 10, size: 3 }]);
-    expect(lastBar(covered).volume).toBe(4);
+    expect(lastBar(covered).volume).toBe(3);
   });
 
   it('daily bars take regular-session ticks only and never append', () => {
@@ -275,7 +275,7 @@ describe('foldTick review fixes', () => {
       { price: 100.2, s: 10, size: 5, bars: [REST[0], B] },
       { price: 100.25, s: 11, size: 2, bars: [REST[0]] },
     ]);
-    expect(lastBar(shorter).volume).toBe(107);
+    expect(lastBar(shorter).volume).toBe(100);
   });
 
   it('a covered bucket that closed keeps REST’s open, extremes and volume when a refetch drops it', () => {
@@ -286,7 +286,7 @@ describe('foldTick review fixes', () => {
       { price: 100.6, s: 302, bars: [REST[0]] },
     ]);
     expect(shorter.bars.map((b) => b.timestamp)).toEqual([T0 - 300_000, T0, T0 + 300_000]);
-    expect(shorter.bars[1]).toEqual({ timestamp: T0, open: 100.0, high: 100.4, low: 99.8, close: 100.3, volume: 105 });
+    expect(shorter.bars[1]).toEqual({ timestamp: T0, open: 100.0, high: 100.4, low: 99.8, close: 100.3, volume: 100 });
     expect(lastBar(shorter).open).toBe(100.3);
   });
 
@@ -348,11 +348,50 @@ describe('foldTick backwards refetch and volume', () => {
   it('a covered bucket’s volume never trails a refetch that grew REST’s volume', () => {
     const grown: OHLCVBar[] = [REST[0], { ...REST[1], volume: 50 }];
     const [first, second] = fold([{ price: 100.3, s: 10, size: 3 }, { price: 100.3, s: 11, size: 2, bars: grown }]);
-    expect(lastBar(first).volume).toBe(4);
-    expect(lastBar(second).volume).toBe(52);
+    expect(lastBar(first).volume).toBe(3);
+    expect(lastBar(second).volume).toBe(50);
   });
 });
 
+describe('foldTick volume: the larger of REST volume and the bucket’s tick sizes', () => {
+  const B: OHLCVBar = { timestamp: T0, open: 100.0, high: 100.4, low: 99.8, close: 100.2, volume: 100 };
+  const withB: OHLCVBar[] = [REST[0], B];
+
+  it('does not add tick sizes on top of REST volume for a bucket REST already has', () => {
+    const [one, two] = fold([
+      { price: 100.3, s: 10, size: 4, bars: withB },
+      { price: 100.3, s: 11, size: 116, bars: withB },
+    ]);
+    expect(lastBar(one).volume).toBe(100);
+    expect(lastBar(two).volume).toBe(120);
+  });
+
+  it('follows a later REST refetch whether its volume grew or shrank', () => {
+    const [, grown, shrunk, belowTicks] = fold([
+      { price: 100.3, s: 10, size: 30, bars: withB },
+      { price: 100.3, s: 11, bars: [REST[0], { ...B, volume: 150 }] },
+      { price: 100.3, s: 12, bars: [REST[0], { ...B, volume: 80 }] },
+      { price: 100.3, s: 13, bars: [REST[0], { ...B, volume: 10 }] },
+    ]);
+    expect(lastBar(grown).volume).toBe(150);
+    expect(lastBar(shrunk).volume).toBe(80);
+    expect(lastBar(belowTicks).volume).toBe(30);
+  });
+
+  it('a closed bucket held while REST lags keeps the larger of REST and tick volume', () => {
+    const [, rolled, lagging, dropped] = fold([
+      { price: 100.3, s: 10, size: 4, bars: withB },
+      { price: 100.5, s: 301, size: 2, bars: withB },
+      { price: 100.5, s: 302, bars: [REST[0], { ...B, volume: 120 }] },
+      { price: 100.5, s: 303, bars: [REST[0]] },
+    ]);
+    const atT0 = (o: { bars: OHLCVBar[] }) => o.bars.find((b) => b.timestamp === T0)!.volume;
+    expect(atT0(rolled)).toBe(100);
+    expect(atT0(lagging)).toBe(120);
+    expect(atT0(dropped)).toBe(100);
+    expect(lastBar(dropped).volume).toBe(2);
+  });
+});
 describe('intradayBucketMs', () => {
   it('returns the bucket size for intraday timeframes only', () => {
     expect(intradayBucketMs('5Min')).toBe(300_000);

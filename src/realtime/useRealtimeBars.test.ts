@@ -713,7 +713,7 @@ describe('useRealtimeBars', () => {
       h.rerender(opts({ timeframe: '1Min' }));
       flushFrame();
       expect(h.result.current.live).toMatchObject({ price: 100.7, barCloseAt: T0 + 60_000 });
-      expect(lastOf(h.result.current.bars)).toMatchObject({ timestamp: T0, close: 100.7, volume: 6 });
+      expect(lastOf(h.result.current.bars)).toMatchObject({ timestamp: T0, close: 100.7, volume: 5 });
     });
   });
 
@@ -729,7 +729,7 @@ describe('useRealtimeBars', () => {
     flushFrame();
     h.rerender(opts({ timeframe: '1Min', tick: t }));
     flushFrame();
-    expect(lastOf(h.result.current.bars)).toMatchObject({ timestamp: T0, close: 100.7, volume: 6 });
+    expect(lastOf(h.result.current.bars)).toMatchObject({ timestamp: T0, close: 100.7, volume: 5 });
   });
 
   it('marks the stream live when the reopen render also brings a tick', () => {

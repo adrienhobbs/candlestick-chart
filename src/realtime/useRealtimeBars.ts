@@ -168,7 +168,7 @@ function applyGapResponse(series: Series, fetched: OHLCVBar[], requestedAt: numb
       high: Math.max(b.high, live.tickHigh),
       low: Math.min(b.low, live.tickLow),
       close: live.close,
-      volume: Math.max(b.volume, live.volume),
+      volume: Math.max(b.volume, live.tickVolume),
     };
   });
   const gapBars = mergeGapBars(series.gapBars, bars);
