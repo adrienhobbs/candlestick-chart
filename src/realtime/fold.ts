@@ -25,10 +25,16 @@ export function intradayBucketMs(timeframe: string): number | undefined {
   return Object.prototype.hasOwnProperty.call(INTRADAY_BUCKET_MS, timeframe) ? INTRADAY_BUCKET_MS[timeframe] : undefined;
 }
 
-/** Whether an intraday tick belongs to a bucket before `last`'s, which REST has already moved past. */
+/**
+ * Whether an intraday tick belongs to a bucket before `last`'s, which REST has already
+ * moved past. Only a `last` on this timeframe's bucket grid can say so: bars stamped
+ * off the grid (e.g. 1Hour bars at 13:30Z) or still from the previous timeframe
+ * would otherwise make current ticks look stale.
+ */
 export function intradayTickBefore(last: OHLCVBar, timeframe: string, ms: number): boolean {
   const size = intradayBucketMs(timeframe);
-  return size !== undefined && Math.floor(ms / size) * size < last.timestamp;
+  if (size === undefined || Math.floor(last.timestamp / size) * size !== last.timestamp) return false;
+  return Math.floor(ms / size) * size < last.timestamp;
 }
 
 /**

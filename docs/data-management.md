@@ -316,6 +316,10 @@ Behavior to know about:
 - Ticks fold as they arrive and publish at most once per animation frame. Ticks older than the last
   one, or with a non-positive/non-finite price or invalid time, are ignored. A tick with a `key`
   different from the hook's `key` is also ignored.
+- A tick for an intraday bucket older than the newest REST or gap bar is ignored entirely: it changes
+  neither `live.price`, the stall clock, nor `live.state`. `1Day` ticks are exempt, and while that
+  newest bar is off the timeframe's bucket grid (off-grid stamps, or bars not yet refetched after a
+  timeframe change) a tick that cannot fold still moves the price and stream state.
 - `live.state` is `connecting` until the first tick after the connection opens, then `live`; after
   `stallAfterMs` without a tick (default `DEFAULT_STALL_AFTER_MS`, 30 seconds) it is `stalled`, and
   while the connection is closed it is `disconnected`. `live.price`, `live.reference`, and

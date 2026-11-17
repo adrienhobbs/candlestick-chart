@@ -16,6 +16,8 @@ Status legend: **▶ Next** · **◷ Deferred** · **○ Backlog**
   publishes once per frame, tracks stream state, and backfills gaps through a host `fetchGap`.
   `ChartComponent`'s `live` prop draws the live price line + axis tag and a bar-close countdown.
   A single appended bar now syncs through `update()` instead of `setData()`.
+- **`LiveBucketBar` gains the required field `tickVolume`** (the sum of the bucket's tick sizes).
+  A bar's volume is the larger of that and REST's volume, never the two added together.
 
 ## ✅ Shipped (0.9.2)
 

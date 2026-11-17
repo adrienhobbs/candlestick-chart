@@ -239,6 +239,33 @@ describe('useRealtimeBars', () => {
     flushFrame();
     expect(h.result.current.live).toMatchObject({ price: 100.7, state: 'live' });
   });
+  it('keeps the live price and state after switching to a larger timeframe before the host refetches', () => {
+    const h = setup(opts());
+    act(() => h.result.current.pushTick(tick(100.3, 10)));
+    flushFrame();
+    // Still 5Min bars (last at 16:25Z); the carried tick refolds into the 16:00 hour bucket.
+    h.rerender(opts({ timeframe: '1Hour' }));
+    flushFrame();
+    expect(h.result.current.live).toMatchObject({ price: 100.3, state: 'live' });
+    act(() => h.result.current.pushTick(tick(100.4, 11)));
+    flushFrame();
+    expect(h.result.current.live).toMatchObject({ price: 100.4, state: 'live' });
+    const hourly: OHLCVBar[] = [{ timestamp: Date.parse('2026-10-30T16:00:00Z'), open: 100, high: 100.5, low: 99.5, close: 100.2, volume: 9 }];
+    h.rerender(opts({ timeframe: '1Hour', bars: hourly }));
+    flushFrame();
+    expect(h.result.current.live).toMatchObject({ price: 100.4, state: 'live' });
+  });
+
+  it('moves the price and stream state for ticks on 1Hour bars stamped off the bucket grid', () => {
+    const offGrid: OHLCVBar[] = [{ timestamp: Date.parse('2026-10-30T13:30:00Z'), open: 100, high: 100.5, low: 99.5, close: 100.2, volume: 9 }];
+    vi.setSystemTime(Date.parse('2026-10-30T13:45:00Z'));
+    const h = setup(opts({ timeframe: '1Hour', bars: offGrid }));
+    act(() => h.result.current.pushTick({ price: 100.6, time: '2026-10-30T13:45:00Z' }));
+    flushFrame();
+    expect(h.result.current.live).toMatchObject({ price: 100.6, state: 'live' });
+    advance(30_000);
+    expect(h.result.current.live?.state).toBe('stalled');
+  });
   it('folds each tick once under StrictMode', () => {
     const wrapper = ({ children }: { children: ReactNode }) => createElement(StrictMode, null, children);
     const h = setup(opts({ tick: tick(100.5, 301, 5) }), wrapper);

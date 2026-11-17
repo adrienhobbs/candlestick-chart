@@ -192,6 +192,11 @@ function applyGapResponse(series: Series, fetched: OHLCVBar[], requestedAt: numb
  * tick may land in the old series (pass `tick.key` to have it dropped instead). Ticks fold into the series state as they arrive (so a burst loses no
  * extreme) and the output is published at most once per animation frame, from a
  * snapshot taken in that frame, so bars and price always come from the same moment.
+ *
+ * A tick for an intraday bucket older than the newest REST or gap bar is ignored
+ * entirely: it changes neither the price, the stall clock nor the stream state. 1Day
+ * ticks are exempt, and so is any tick while that newest bar is off the timeframe's
+ * bucket grid (off-grid stamps, or bars not yet refetched after a timeframe change).
  */
 export function useRealtimeBars(options: UseRealtimeBarsOptions): UseRealtimeBarsResult {
   const {
@@ -325,8 +330,8 @@ export function useRealtimeBars(options: UseRealtimeBarsOptions): UseRealtimeBar
         if (s.lastTickMs !== null && ms < s.lastTickMs) continue;
         const tail = lastBaseBar(hostBars, s.gapBars);
         // A delayed tick for a bucket REST has moved past folds nowhere, so it moves no
-        // live state either. With no bars yet, or a 1Day tick outside the session, the
-        // tick is not folded but still moves the price.
+        // live state either. With no bars yet, a 1Day tick outside the session, or a
+        // newest bar off this timeframe's grid, the tick may not fold but still moves the price.
         if (tail !== null && intradayTickBefore(tail, s.timeframe, ms)) continue;
         s.lastTickMs = ms;
         s.lastTick = t;
