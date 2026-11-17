@@ -61,7 +61,8 @@ Market data provider → Adapter → useBarsData → bars → ChartComponent
 
 **ChartComponent** (presentation)
 - Receives `bars` as a prop and renders candles and volume
-- Applies a single-bar `update` when only the last bar changed, a full `setData` otherwise
+- Applies a single-bar `update` when only the last bar changed, `update` calls only when exactly
+  one newer bar was appended (a live rollover), and a full `setData` otherwise
 - Calls `onLoadMoreData` for infinite scroll
 - No fetching
 

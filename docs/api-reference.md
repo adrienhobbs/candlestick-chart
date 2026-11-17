@@ -384,7 +384,14 @@ foldTick(
 ): { bars: OHLCVBar[]; state: LiveFoldState | null };
 
 mergeLive(bars: OHLCVBar[], state: LiveFoldState | null): OHLCVBar[];
+
+intradayBucketMs(timeframe: string): number | undefined;
 ```
+
+`intradayBucketMs` returns the bucket length in milliseconds of an intraday timeframe: `1Min`
+(60,000), `5Min` (300,000), `15Min` (900,000) or `1Hour` (3,600,000). Any other string, including
+`1Day` and inherited object keys such as `'constructor'`, returns `undefined`; for such a timeframe the
+hook reports `live.barCloseAt` as `null`.
 
 `LiveFoldState` extends `LiveBucketBar` with `key`, `timeframe`, `lastTickMs`, and the `closed`
 bucket list. `LiveBucketBar` exposes `bucket`, `open`, `high`, `low`, `close`, `volume`,

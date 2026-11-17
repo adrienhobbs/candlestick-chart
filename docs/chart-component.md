@@ -1093,7 +1093,10 @@ On each `bars` change the chart sorts the bars and drops duplicate timestamps (k
 first), then compares them with the previous set:
 
 - only the last bar changed (a forming bar ticking): a single `update()`, which keeps the view;
-- anything else (first load, a prepended page, a new symbol, a different length): a full `setData()`;
+- exactly one newer bar appended after unchanged bars (a live rollover): `update()` calls only,
+  one for the new bar plus one for the previous last bar if it changed too;
+- anything else (first load, a prepended page, a new symbol, a shorter series, several new bars):
+  a full `setData()`;
 - nothing changed: no work.
 
 Replacing `bars` with a different series (e.g. switching symbols) is applied in place; there
