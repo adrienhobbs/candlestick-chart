@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { OHLCVBar } from '../types/chart';
-import { foldTick, intradayBucketMs, mergeLive, tickTimeMs } from './fold';
+import { foldTick, intradayBucketMs, intradayTickBefore, mergeLive, tickTimeMs } from './fold';
 import { currentBucket, mergeGapBars, normalizeBars, tickGap, withGapBars } from './gap';
 import { DEFAULT_STALL_AFTER_MS, deriveStreamState } from './live-state';
 import type {
@@ -323,6 +323,11 @@ export function useRealtimeBars(options: UseRealtimeBarsOptions): UseRealtimeBar
         // Same rejects as foldTick, so a price it would not fold never shows as the live price.
         if (!Number.isFinite(t.price) || t.price <= 0 || !Number.isFinite(ms)) continue;
         if (s.lastTickMs !== null && ms < s.lastTickMs) continue;
+        const tail = lastBaseBar(hostBars, s.gapBars);
+        // A delayed tick for a bucket REST has moved past folds nowhere, so it moves no
+        // live state either. With no bars yet, or a 1Day tick outside the session, the
+        // tick is not folded but still moves the price.
+        if (tail !== null && intradayTickBefore(tail, s.timeframe, ms)) continue;
         s.lastTickMs = ms;
         s.lastTick = t;
         s.price = t.price;
@@ -332,7 +337,6 @@ export function useRealtimeBars(options: UseRealtimeBarsOptions): UseRealtimeBar
         const gap = tickGap(newestKnown(s, hostBars), s.timeframe, ms);
         // foldTick's state depends only on the last bar, so the full history is not
         // built per tick; its returned bars are not used.
-        const tail = lastBaseBar(hostBars, s.gapBars);
         s.fold = foldTick(s.fold, { key, bars: tail === null ? [] : [tail], timeframe: s.timeframe, tick: t }).state;
         if (gap) requestGap(s, gap);
         folded = true;

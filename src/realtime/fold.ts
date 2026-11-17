@@ -25,6 +25,12 @@ export function intradayBucketMs(timeframe: string): number | undefined {
   return Object.prototype.hasOwnProperty.call(INTRADAY_BUCKET_MS, timeframe) ? INTRADAY_BUCKET_MS[timeframe] : undefined;
 }
 
+/** Whether an intraday tick belongs to a bucket before `last`'s, which REST has already moved past. */
+export function intradayTickBefore(last: OHLCVBar, timeframe: string, ms: number): boolean {
+  const size = intradayBucketMs(timeframe);
+  return size !== undefined && Math.floor(ms / size) * size < last.timestamp;
+}
+
 /**
  * The bucket a tick folds into, or null when it must not be folded. A 1Day `last`
  * must be stamped at its New York session day (e.g. ET midnight, as Alpaca does).

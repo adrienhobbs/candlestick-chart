@@ -208,6 +208,37 @@ describe('useRealtimeBars', () => {
     expect(lastOf(h.result.current.bars).close).toBe(100.9);
   });
 
+  it('ignores a tick for a bucket older than REST’s last bar: price, tick time and state stay', () => {
+    const movedOn: OHLCVBar[] = [...REST, bar(300, 100.5), bar(600, 100.6)];
+    const h = setup(opts());
+    act(() => h.result.current.pushTick(tick(100.5, 301)));
+    flushFrame();
+    h.rerender(opts({ bars: movedOn }));
+    const before = h.result.current.live;
+    expect(before).toMatchObject({ price: 100.5, state: 'live', barCloseAt: T0 + 600_000 });
+    advance(25_000);
+    act(() => h.result.current.pushTick(tick(120, 302)));
+    flushFrame();
+    expect(h.result.current.live).toEqual(before);
+    // The stall clock still runs from the last usable tick.
+    advance(10_000);
+    expect(h.result.current.live).toMatchObject({ price: 100.5, state: 'stalled' });
+  });
+
+  it('does not make the stream live with a tick for a bucket older than REST’s last bar', () => {
+    const movedOn: OHLCVBar[] = [...REST, bar(300, 100.5), bar(600, 100.6)];
+    const h = setup(opts({ connection: 'connecting' }));
+    act(() => h.result.current.pushTick(tick(100.5, 301)));
+    flushFrame();
+    h.rerender(opts({ connection: 'open', bars: movedOn }));
+    expect(h.result.current.live).toMatchObject({ price: 100.5, state: 'connecting' });
+    act(() => h.result.current.pushTick(tick(120, 302)));
+    flushFrame();
+    expect(h.result.current.live).toMatchObject({ price: 100.5, state: 'connecting' });
+    act(() => h.result.current.pushTick(tick(100.7, 601)));
+    flushFrame();
+    expect(h.result.current.live).toMatchObject({ price: 100.7, state: 'live' });
+  });
   it('folds each tick once under StrictMode', () => {
     const wrapper = ({ children }: { children: ReactNode }) => createElement(StrictMode, null, children);
     const h = setup(opts({ tick: tick(100.5, 301, 5) }), wrapper);
